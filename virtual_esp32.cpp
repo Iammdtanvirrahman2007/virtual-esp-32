@@ -65,6 +65,49 @@ void handleClient(int fd,sockaddr_in addr){
     }
     close(fd); std::cout<<"[CLIENT] Disconnected\n";
 }
+void discoveryLoop(){
+    int fd=socket(AF_INET,SOCK_DGRAM,0);
+    if(fd<0){ perror("discovery socket"); return; }
+
+    int yes=1;
+    setsockopt(fd,SOL_SOCKET,SO_BROADCAST,&yes,sizeof(yes));
+    setsockopt(fd,SOL_SOCKET,SO_REUSEADDR,&yes,sizeof(yes));
+
+    sockaddr_in bindAddr{};
+    bindAddr.sin_family=AF_INET;
+    bindAddr.sin_addr.s_addr=INADDR_ANY;
+    bindAddr.sin_port=htons(4210);
+
+    if(bind(fd,(sockaddr*)&bindAddr,sizeof(bindAddr))<0){
+        perror("discovery bind");
+        close(fd);
+        return;
+    }
+
+    std::cout<<"[DISCOVERY] UDP listening on :4210\n";
+
+    char buffer[1024];
+    while(running){
+        sockaddr_in from{};
+        socklen_t fromLen=sizeof(from);
+        ssize_t n=recvfrom(fd,buffer,sizeof(buffer)-1,0,(sockaddr*)&from,&fromLen);
+        if(n<=0) continue;
+        buffer[n]=0;
+
+        std::string request(buffer);
+        while(!request.empty() && (request.back()=='\r'||request.back()=='\n'||request.back()==' ')) request.pop_back();
+
+        if(request=="ROBOT_DISCOVER"){
+            std::string json=R"({"ip":"127.0.0.1","port":5000,"name":"Virtual ESP32 Robot","type":"wheeled"})";
+            sendto(fd,json.c_str(),json.size(),0,(sockaddr*)&from,fromLen);
+            char ip[INET_ADDRSTRLEN]{};
+            inet_ntop(AF_INET,&from.sin_addr,ip,sizeof(ip));
+            std::cout<<"[DISCOVERY] Request from "<<ip<<":"<<ntohs(from.sin_port)<<" -> replied\n";
+        }
+    }
+    close(fd);
+}
+
 void telemetryLoop(){
     using namespace std::chrono_literals;
     while(running){
@@ -90,7 +133,8 @@ int main(){
     sockaddr_in sa{}; sa.sin_family=AF_INET; sa.sin_addr.s_addr=INADDR_ANY; sa.sin_port=htons(5000);
     if(bind(server,(sockaddr*)&sa,sizeof(sa))<0){perror("bind");close(server);return 1;}
     if(listen(server,8)<0){perror("listen");close(server);return 1;}
+    std::thread discovery(discoveryLoop);
     std::thread t(telemetryLoop);
     while(running){ sockaddr_in client{}; socklen_t len=sizeof(client); int fd=accept(server,(sockaddr*)&client,&len); if(fd<0) continue; std::thread(handleClient,fd,client).detach(); }
-    running=false; t.join(); close(server); return 0;
+    running=false; discovery.join(); t.join(); close(server); return 0;
 }
