@@ -63,18 +63,6 @@ function applySpeedLimit(value){
   window.dispatchEvent(new CustomEvent("robot-speed",{detail:world.speedLimit}));
 }
 
-function applyCommand(command,value){
-  const v=clamp(Number(value)||0,-100,100)*(world.speedLimit/100);
-  currentCommand=String(command||"STOP").toUpperCase();
-  if(currentCommand==="FORWARD"||currentCommand==="DRIVE_FORWARD"){world.motorL=v;world.motorR=v}
-  else if(currentCommand==="BACKWARD"||currentCommand==="DRIVE_BACKWARD"){world.motorL=-Math.abs(v);world.motorR=-Math.abs(v)}
-  else if(currentCommand==="TURN_LEFT"){world.motorL=-Math.abs(v);world.motorR=Math.abs(v)}
-  else if(currentCommand==="TURN_RIGHT"){world.motorL=Math.abs(v);world.motorR=-Math.abs(v)}
-  else if(currentCommand==="SET_MOTOR_L"){world.motorL=v}
-  else if(currentCommand==="SET_MOTOR_R"){world.motorR=v}
-  else {world.motorL=0;world.motorR=0}
-}
-
 function safetyWatchdog(now){
   if(currentCommand!=="STOP" && lastCommandSeenAt && now-lastCommandSeenAt>COMMAND_TTL_MS){
     world.motorL=0; world.motorR=0; currentCommand="STOP";
