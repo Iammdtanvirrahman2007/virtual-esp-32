@@ -136,6 +136,20 @@ async function publish(){
   await setDoc(doc(db,"robots",robotId,"state","current"),state,{merge:true});
 }
 
+async function sendManualCommand(command, value=0){
+  await signInAnonymously(auth);
+  const current = await new Promise(resolve => {
+    let done=false;
+    const u=onSnapshot(doc(db,"robots",robotId,"control","current"),snap=>{if(!done){done=true;u();resolve(snap.exists()?snap.data():null)}});
+  });
+  const seq=Math.max(lastSeq,Number(current?.seq||0))+1;
+  const id="manual-"+Date.now()+"-"+seq;
+  const payload={seq,id,command:String(command).toUpperCase(),value:Number(value)||0,priority:String(command).toUpperCase()==="STOP"?1000:100,ttl:String(command).toUpperCase()==="STOP"?5000:1500,issuedAtMs:Date.now(),source:"virtual-esp32-manual"};
+  await setDoc(doc(db,"robots",robotId,"control","current"),payload);
+  logManual("TX "+payload.command+" "+payload.value);
+}
+function logManual(message){ window.dispatchEvent(new CustomEvent("robot-command",{detail:{command:message}})); }
+
 async function start(){
   if(running)return;
   running=true;
@@ -158,7 +172,7 @@ async function start(){
     currentCommandId=String(c.id || "");
     currentCommandAt=Date.now();
     lastCommandSeenAt=currentCommandAt;
-    ackCommand(c,true);
+    ackCommand(c,true); window.dispatchEvent(new CustomEvent("robot-ack",{detail:{id:String(c.id||""),seq:Number(c.seq||0),command:String(c.command||""),accepted:true,at:Date.now()}}));
     window.dispatchEvent(new CustomEvent("robot-command",{detail:c}));
   },err=>window.dispatchEvent(new CustomEvent("robot-error",{detail:err})));
 
@@ -174,5 +188,5 @@ async function start(){
   requestAnimationFrame(loop);
 }
 
-window.VirtualESP32={world,start,stop(){commandUnsub?.();running=false;world.motorL=0;world.motorR=0},publish,setSpeedLimit:applySpeedLimit};
+window.VirtualESP32={world,start,stop(){commandUnsub?.();running=false;world.motorL=0;world.motorR=0},publish,setSpeedLimit:applySpeedLimit,sendManualCommand};
 start().catch(e=>window.dispatchEvent(new CustomEvent("robot-error",{detail:e})));
