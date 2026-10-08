@@ -4,7 +4,11 @@ on:
   push:
     branches: [main]
     paths:
-      - "web/**"
+      - "index.html"
+      - "firebase-runtime.js"
+      - "hardware/**"
+      - "virtual_esp32.cpp"
+      - "README.md"
       - ".github/workflows/pages.yml"
   workflow_dispatch:
 
@@ -33,7 +37,8 @@ jobs:
       - name: Prepare site
         run: |
           mkdir -p _site
-          cp -R web/. _site/
+          cp index.html _site/
+          cp firebase-runtime.js _site/
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
