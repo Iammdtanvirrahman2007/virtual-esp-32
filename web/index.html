@@ -12,7 +12,7 @@ canvas{display:block;width:100%;height:auto;background:#07101c}.stats{display:gr
 #status{padding:5px 9px;border-radius:20px;background:#263653}.live{color:#63e39a}.bad{color:#ff7b7b}
 pre,#log{margin:0;background:#080d18;padding:12px;overflow:auto;font:12px monospace}#log{height:130px}
 @media(max-width:850px){main{grid-template-columns:1fr}}
-</style>
+.code-card{grid-column:1/-1}.code-card textarea{width:100%;min-height:300px;resize:vertical;background:#050a12;color:#dce7ff;border:1px solid #293552;border-radius:8px;padding:12px;font:13px monospace;line-height:1.45}.toolbar{display:flex;gap:8px;margin-top:9px;flex-wrap:wrap}.toolbar button{background:#1c2b4a;color:#e8eefc;border:1px solid #3a4d73;border-radius:7px;padding:8px 12px;cursor:pointer}.toolbar button:hover{background:#263a5f}#codeStatus{margin-top:8px;color:#8fa1c5;font-size:12px}.code-card h3{font-size:13px;margin:12px 0 6px}</style>
 </head>
 <body>
 <header><b>🤖 Virtual ESP32 Rover Lab</b><span id="status">CONNECTING FIRESTORE…</span></header>
@@ -27,7 +27,36 @@ pre,#log{margin:0;background:#080d18;padding:12px;overflow:auto;font:12px monosp
 <div class="stat"><div class="label">MOTOR L</div><div id="motorL" class="value">0%</div></div>
 <div class="stat"><div class="label">MOTOR R</div><div id="motorR" class="value">0%</div></div>
 </div></div></section>
-<section class="card"><h2>☁ CLAUDE-ROBOT ↔ FIRESTORE ↔ VIRTUAL ESP32</h2><div class="body">
+<section class="card code-card"><h2>💻 ESP32 CODE CONSOLE</h2><div class="body">
+<textarea id="code" spellcheck="false">#include <Arduino.h>
+
+const int TRIG_PIN = 5;
+const int ECHO_PIN = 18;
+const int MOTOR_L_PWM = 25;
+const int MOTOR_L_DIR = 26;
+const int MOTOR_R_PWM = 27;
+const int MOTOR_R_DIR = 14;
+
+void setup() {
+  Serial.begin(115200);
+  pinMode(TRIG_PIN, OUTPUT);
+  pinMode(ECHO_PIN, INPUT);
+  pinMode(MOTOR_L_PWM, OUTPUT);
+  pinMode(MOTOR_L_DIR, OUTPUT);
+  pinMode(MOTOR_R_PWM, OUTPUT);
+  pinMode(MOTOR_R_DIR, OUTPUT);
+}
+
+void loop() {
+  analogWrite(MOTOR_L_PWM, 70);
+  analogWrite(MOTOR_R_PWM, 70);
+  Serial.println("FORWARD");
+  delay(100);
+}</textarea>
+<div class="toolbar"><button id="runCode">▶ RUN ESP32 CODE</button><button id="stopCode">■ STOP</button><button id="clearCode">CLEAR</button></div>
+<div id="codeStatus">Ready. Arduino-style code is simulated by the virtual GPIO layer.</div>
+<h3>Serial Monitor</h3><pre id="serial">115200 baud · waiting…</pre>
+</div></section><section class="card"><h2>☁ CLAUDE-ROBOT ↔ FIRESTORE ↔ VIRTUAL ESP32</h2><div class="body">
 <p id="trace">The browser simulator is listening for cloud commands.</p>
 <pre>Claude-Robot
      ↓
@@ -61,6 +90,10 @@ function draw(){
  $("motorL").textContent=w.motorL.toFixed(0)+"%";$("motorR").textContent=w.motorR.toFixed(0)+"%";
 }
 window.addEventListener("robot-state",e=>{w=e.detail;draw()});
+window.addEventListener("esp-serial",e=>{const el=$("serial");el.textContent=(new Date().toLocaleTimeString()+"  "+e.detail+"\\n"+el.textContent).slice(0,6000)});
+$("runCode").onclick=()=>window.VirtualESP32?.runSketch?.($("code").value);
+$("stopCode").onclick=()=>window.VirtualESP32?.stopSketch?.();
+$("clearCode").onclick=()=>{$("code").value="";$("codeStatus").textContent="Editor cleared."};
 window.addEventListener("robot-command",e=>{log("COMMAND "+e.detail.command+" "+(e.detail.value||""));$("trace").textContent="Latest command: "+e.detail.command});
 window.addEventListener("robot-error",e=>{ $("status").textContent="FIRESTORE ERROR";$("status").className="bad";log("ERROR "+(e.detail?.message||e.detail))});
 $("status").textContent="● FIRESTORE LIVE";$("status").className="live";log("Firebase connected · VESP32-01 online");draw();
