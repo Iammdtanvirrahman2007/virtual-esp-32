@@ -19,6 +19,7 @@ static int motorL=0,motorR=0,battery=100;
 static float temperature=29.0f;
 static double x=60,y=60,heading=0;
 static bool collision=false;
+static int ultrasonicCm=250;
 static std::vector<std::pair<double,double>> path{{60,60}};
 struct Rect{double x,y,w,h;};
 static const std::vector<Rect> obstacles={{180,40,40,160},{320,200,180,40},{100,280,160,40},{430,60,40,100}};
@@ -57,7 +58,7 @@ static void physicsTick(){
     if((motorL||motorR)&&battery>0) battery=std::max(0,battery-1);
     temperature=29.0f+(std::abs(motorL)+std::abs(motorR))*0.015f;
 }
-static int frontDistance(){return (int)std::round(rayDistance(x,y,heading));}
+static int frontDistance(){ return (int)std::round(rayDistance(x,y,heading)); }
 
 std::string hardware(){
  return R"({"ok":true,"type":"wheeled","name":"Virtual ESP32 Rover","camera":false,"sensors":[{"id":"front_distance","type":"ultrasonic","unit":"cm"},{"id":"collision","type":"digital","unit":"bool"}],"actuators":[{"id":"motor_l","type":"motor","unit":"percent"},{"id":"motor_r","type":"motor","unit":"percent"}],"panels":["DRIVETRAIN","VIRTUAL_MAP","CODE","CIRCUIT"],"map":{"width":600,"height":400,"cell":20},"firmware":"virtual-esp32","version":"4.0"})";
@@ -115,7 +116,7 @@ void discoveryLoop(){
  char b[1024];while(running){sockaddr_in from{};socklen_t fl=sizeof(from);ssize_t n=recvfrom(fd,b,sizeof(b)-1,0,(sockaddr*)&from,&fl);if(n<=0)continue;b[n]=0;std::string q(b);if(q.find("ROBOT_DISCOVER")!=std::string::npos||q.find("\"type\":\"discover\"")!=std::string::npos){std::string j=R"({"type":"robot","protocol":1,"id":"VESP32-01","name":"Virtual ESP32 Rover","robot_type":"wheeled","tcp_port":5000,"firmware":"virtual-esp32","version":"4.0"})";sendto(fd,j.c_str(),j.size(),0,(sockaddr*)&from,fl);}}
  close(fd);
 }
-void telemetryLoop(){using namespace std::chrono_literals;while(running){physicsTick();std::this_thread::sleep_for(500ms);}}
+void telemetryLoop(){using namespace std::chrono_literals;while(running){physicsTick();ultrasonicCm=frontDistance();std::this_thread::sleep_for(500ms);}}
 int main(){
  std::cout<<"VIRTUAL ESP32 ROVER 4.0\nTCP :5000 | UDP :4210\n";
  int server=socket(AF_INET,SOCK_STREAM,0);if(server<0)return 1;int yes=1;setsockopt(server,SOL_SOCKET,SO_REUSEADDR,&yes,sizeof(yes));sockaddr_in sa{};sa.sin_family=AF_INET;sa.sin_addr.s_addr=INADDR_ANY;sa.sin_port=htons(5000);if(bind(server,(sockaddr*)&sa,sizeof(sa))<0)return 1;if(listen(server,8)<0)return 1;
