@@ -36,36 +36,15 @@ pre,#log{margin:0;background:#080d18;padding:12px;overflow:auto;font:12px monosp
 <div class="speed-buttons"><button data-speed="25">25%</button><button data-speed="50">50%</button><button data-speed="75">75%</button><button data-speed="100">100%</button><button data-speed="0">STOP</button></div>
 </div>
 </div></section>
-<section class="card code-card"><h2>💻 ESP32 CODE CONSOLE</h2><div class="body">
-<textarea id="code" spellcheck="false">#include <Arduino.h>
-
-const int TRIG_PIN = 5;
-const int ECHO_PIN = 18;
-const int MOTOR_L_PWM = 25;
-const int MOTOR_L_DIR = 26;
-const int MOTOR_R_PWM = 27;
-const int MOTOR_R_DIR = 14;
-
-void setup() {
-  Serial.begin(115200);
-  pinMode(TRIG_PIN, OUTPUT);
-  pinMode(ECHO_PIN, INPUT);
-  pinMode(MOTOR_L_PWM, OUTPUT);
-  pinMode(MOTOR_L_DIR, OUTPUT);
-  pinMode(MOTOR_R_PWM, OUTPUT);
-  pinMode(MOTOR_R_DIR, OUTPUT);
-}
-
-void loop() {
-  analogWrite(MOTOR_L_PWM, 70);
-  analogWrite(MOTOR_R_PWM, 70);
-  Serial.println("FORWARD");
-  delay(100);
-}</textarea>
-<div class="toolbar"><button id="runCode">▶ RUN ESP32 CODE</button><button id="stopCode">■ STOP</button><button id="clearCode">CLEAR</button></div>
-<div id="codeStatus">Ready. Arduino-style code is simulated by the virtual GPIO layer.</div>
-<h3>Serial Monitor</h3><pre id="serial">115200 baud · waiting…</pre>
-</div></section><section class="card"><h2>☁ CLAUDE-ROBOT ↔ FIRESTORE ↔ VIRTUAL ESP32</h2><div class="body">
+<section class="card code-card"><h2>🎛️ VIRTUAL ESP32 CONTROL PANEL</h2><div class="body">
+<p>Claude-Robot controls the virtual ESP32 through Firestore. This page is the hardware/digital-twin layer: it executes commands and returns sensor telemetry.</p>
+<div class="toolbar">
+<button id="manualForward">↑ FORWARD</button><button id="manualLeft">← LEFT</button><button id="manualStop">■ STOP</button><button id="manualRight">→ RIGHT</button><button id="manualBackward">↓ BACK</button>
+</div>
+<div class="toolbar"><button data-cmd="FORWARD" data-val="25">FWD 25</button><button data-cmd="FORWARD" data-val="50">FWD 50</button><button data-cmd="FORWARD" data-val="75">FWD 75</button><button data-cmd="TURN_LEFT" data-val="60">LEFT 60</button><button data-cmd="TURN_RIGHT" data-val="60">RIGHT 60</button><button data-cmd="STOP" data-val="0">STOP</button></div>
+<h3>Command ACK</h3><pre id="ack">waiting…</pre>
+<h3>Telemetry</h3><pre id="telemetry">waiting…</pre>
+</div></section></section><section class="card"><h2>☁ CLAUDE-ROBOT ↔ FIRESTORE ↔ VIRTUAL ESP32</h2><div class="body">
 <p id="trace">The browser simulator is listening for cloud commands.</p>
 <pre>Claude-Robot
      ↓
@@ -111,6 +90,11 @@ $("stopCode").onclick=()=>window.VirtualESP32?.stopSketch?.();
 $("clearCode").onclick=()=>{$("code").value="";$("codeStatus").textContent="Editor cleared."};
 window.addEventListener("robot-command",e=>{log("COMMAND "+e.detail.command+" "+(e.detail.value||""));$("trace").textContent="Latest command: "+e.detail.command});
 window.addEventListener("robot-error",e=>{$("status").textContent="FIRESTORE ERROR";$("status").className="bad";log("ERROR "+(e.detail?.message||e.detail))});
+function manual(cmd,val){ window.VirtualESP32?.sendManualCommand?.(cmd,val) }
+$("manualForward").onclick=()=>manual("FORWARD",50);$("manualLeft").onclick=()=>manual("TURN_LEFT",60);$("manualStop").onclick=()=>manual("STOP",0);$("manualRight").onclick=()=>manual("TURN_RIGHT",60);$("manualBackward").onclick=()=>manual("BACKWARD",50);
+document.querySelectorAll("[data-cmd]").forEach(b=>b.onclick=()=>manual(b.dataset.cmd,b.dataset.val));
+window.addEventListener("robot-ack",e=>{$("ack").textContent=JSON.stringify(e.detail,null,2)});
+window.addEventListener("robot-state",e=>{$("telemetry").textContent=JSON.stringify({pose:e.detail.robot,sensors:{frontDistance:e.detail.frontDistance,collision:e.detail.collision,battery:e.detail.battery},motors:{left:e.detail.motorL,right:e.detail.motorR}},null,2)});
 $("status").textContent="● FIRESTORE LIVE";$("status").className="live";log("Firebase connected · VESP32-01 online");draw();
 </script>
 </body></html>
