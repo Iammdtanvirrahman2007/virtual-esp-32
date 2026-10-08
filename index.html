@@ -1,119 +1,68 @@
 <!doctype html>
 <html lang="en">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Virtual ESP32 Rover Lab</title>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Virtual ESP32 Rover Lab · Firestore</title>
 <style>
-*{box-sizing:border-box}body{margin:0;background:#0b1020;color:#e8eefc;font:14px Arial,sans-serif}
-header{padding:16px 20px;background:#111a30;border-bottom:1px solid #293552;display:flex;justify-content:space-between}
+*{box-sizing:border-box}body{margin:0;background:#09101d;color:#e8eefc;font:14px Arial,sans-serif}
+header{padding:16px 20px;background:#111a30;border-bottom:1px solid #293552;display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap}
 main{display:grid;grid-template-columns:1.35fr .9fr;gap:14px;padding:14px}.card{background:#111a30;border:1px solid #293552;border-radius:10px;overflow:hidden}
 h2{font-size:15px;margin:0;padding:12px 14px;border-bottom:1px solid #293552}.body{padding:12px}
 canvas{display:block;width:100%;height:auto;background:#07101c}.stats{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}.stat{padding:9px;background:#080d18;border-radius:7px}.label{color:#8fa1c5;font-size:11px}.value{font-weight:bold;margin-top:3px}
-#status{padding:5px 9px;border-radius:20px;background:#263653}.preview{color:#ffd166}.live{color:#63e39a}
-pre{margin:0;background:#080d18;padding:12px;overflow:auto;min-height:180px;font:12px monospace}
-#log{height:120px;overflow:auto;background:#080d18;padding:10px;font:11px monospace}
+#status{padding:5px 9px;border-radius:20px;background:#263653}.live{color:#63e39a}.bad{color:#ff7b7b}
+pre,#log{margin:0;background:#080d18;padding:12px;overflow:auto;font:12px monospace}#log{height:130px}
 @media(max-width:850px){main{grid-template-columns:1fr}}
 </style>
 </head>
 <body>
-<header><b>🤖 Virtual ESP32 Rover Lab</b><span id="status" class="preview">PREVIEW</span></header>
+<header><b>🤖 Virtual ESP32 Rover Lab</b><span id="status">CONNECTING FIRESTORE…</span></header>
 <main>
-<section class="card">
-<h2>LIVE WORLD MAP · 600 × 400 cm</h2>
-<div class="body">
+<section class="card"><h2>LIVE WORLD MAP · 600 × 400 cm</h2><div class="body">
 <canvas id="map" width="900" height="600"></canvas>
 <div class="stats">
 <div class="stat"><div class="label">POSITION</div><div id="pos" class="value">60, 60 cm</div></div>
 <div class="stat"><div class="label">HEADING</div><div id="heading" class="value">0°</div></div>
-<div class="stat"><div class="label">ULTRASONIC</div><div id="front" class="value">120 cm</div></div>
+<div class="stat"><div class="label">ULTRASONIC</div><div id="front" class="value">250 cm</div></div>
 <div class="stat"><div class="label">BATTERY</div><div id="battery" class="value">100%</div></div>
 <div class="stat"><div class="label">MOTOR L</div><div id="motorL" class="value">0%</div></div>
 <div class="stat"><div class="label">MOTOR R</div><div id="motorR" class="value">0%</div></div>
-</div>
-</div>
-</section>
-<section class="card">
-<h2>CLAUDE-ROBOT → VIRTUAL ESP32</h2>
-<div class="body">
-<p id="trace">Static GitHub Pages preview is running.</p>
-<h3>Execution model</h3>
+</div></div></section>
+<section class="card"><h2>☁ CLAUDE-ROBOT ↔ FIRESTORE ↔ VIRTUAL ESP32</h2><div class="body">
+<p id="trace">The browser simulator is listening for cloud commands.</p>
 <pre>Claude-Robot
      ↓
-COMMAND FORWARD 40
+Firestore /robots/VESP32-01/control/current
      ↓
-Virtual ESP32
+Virtual ESP32 browser physics
      ↓
-Motor Driver
-  L=40% R=40%
+motors + collision + ultrasonic
      ↓
-Virtual physics
+Firestore /robots/VESP32-01/state/current
      ↓
-Ultrasonic sensor
-     ↓
-Telemetry → World Model</pre>
-<h3>Execution log</h3>
-<div id="log">GitHub Pages loaded successfully.\nWaiting for live bridge...</div>
-</div>
-</section>
+Claude-Robot World Model</pre>
+<h3>Execution log</h3><div id="log">Starting anonymous Firebase session…</div>
+</div></section>
 </main>
-<script>
-(function(){
-"use strict";
-var canvas=document.getElementById("map");
-var ctx=canvas.getContext("2d");
-var world={
- width:600,height:400,cell:20,
- robot:{x:60,y:60,heading:0},
- frontDistance:120,motorL:0,motorR:0,battery:100,
- obstacles:[
-  {x:180,y:40,w:40,h:160},
-  {x:320,y:200,w:180,h:40},
-  {x:100,y:280,w:160,h:40},
-  {x:430,y:60,w:40,h:100}
- ],
- path:[]
-};
-function el(id){return document.getElementById(id);}
+<script type="module">
+import "./firebase-runtime.js";
+const $=id=>document.getElementById(id),canvas=$("map"),ctx=canvas.getContext("2d");
+let w=window.VirtualESP32?.world||{width:600,height:400,cell:20,robot:{x:60,y:60,heading:0},frontDistance:250,battery:100,motorL:0,motorR:0,obstacles:[]};
+const log=t=>{$("log").textContent=(new Date().toLocaleTimeString()+"  "+t+"\n"+$("log").textContent).slice(0,5000)};
 function draw(){
- var sx=canvas.width/world.width,sy=canvas.height/world.height;
- ctx.clearRect(0,0,canvas.width,canvas.height);
+ const sx=canvas.width/w.width,sy=canvas.height/w.height;ctx.clearRect(0,0,canvas.width,canvas.height);
  ctx.strokeStyle="#263a5f";ctx.lineWidth=1;
- for(var x=0;x<=world.width;x+=world.cell){ctx.beginPath();ctx.moveTo(x*sx,0);ctx.lineTo(x*sx,canvas.height);ctx.stroke();}
- for(var y=0;y<=world.height;y+=world.cell){ctx.beginPath();ctx.moveTo(0,y*sy);ctx.lineTo(canvas.width,y*sy);ctx.stroke();}
- ctx.strokeStyle="#52688f";ctx.lineWidth=4;ctx.strokeRect(2,2,canvas.width-4,canvas.height-4);
- ctx.fillStyle="#52617f";
- world.obstacles.forEach(function(o){ctx.fillRect(o.x*sx,o.y*sy,o.w*sx,o.h*sy);});
- if(world.path.length>1){
-  ctx.strokeStyle="#63e39a";ctx.lineWidth=3;ctx.beginPath();
-  world.path.forEach(function(p,i){if(i)ctx.lineTo(p.x*sx,p.y*sy);else ctx.moveTo(p.x*sx,p.y*sy);});
-  ctx.stroke();
- }
- var r=world.robot;
- ctx.save();ctx.translate(r.x*sx,r.y*sy);ctx.rotate(r.heading*Math.PI/180);
- ctx.fillStyle="#63d9ff";ctx.beginPath();ctx.moveTo(16,0);ctx.lineTo(-11,-9);ctx.lineTo(-11,9);ctx.closePath();ctx.fill();ctx.restore();
+ for(let x=0;x<=w.width;x+=w.cell){ctx.beginPath();ctx.moveTo(x*sx,0);ctx.lineTo(x*sx,canvas.height);ctx.stroke()}
+ for(let y=0;y<=w.height;y+=w.cell){ctx.beginPath();ctx.moveTo(0,y*sy);ctx.lineTo(canvas.width,y*sy);ctx.stroke()}
+ ctx.fillStyle="#52617f";(w.obstacles||[]).forEach(o=>ctx.fillRect(o.x*sx,o.y*sy,o.w*sx,o.h*sy));
+ if((w.path||[]).length>1){ctx.strokeStyle="#63e39a";ctx.lineWidth=3;ctx.beginPath();w.path.forEach((p,i)=>i?ctx.lineTo(p.x*sx,p.y*sy):ctx.moveTo(p.x*sx,p.y*sy));ctx.stroke()}
+ const r=w.robot;ctx.save();ctx.translate(r.x*sx,r.y*sy);ctx.rotate(r.heading*Math.PI/180);ctx.fillStyle="#63d9ff";ctx.beginPath();ctx.moveTo(16,0);ctx.lineTo(-11,-9);ctx.lineTo(-11,9);ctx.closePath();ctx.fill();ctx.restore();
+ $("pos").textContent=r.x.toFixed(1)+", "+r.y.toFixed(1)+" cm";$("heading").textContent=r.heading.toFixed(0)+"°";
+ $("front").textContent=(w.frontDistance??250).toFixed(0)+" cm";$("battery").textContent=w.battery.toFixed(0)+"%";
+ $("motorL").textContent=w.motorL.toFixed(0)+"%";$("motorR").textContent=w.motorR.toFixed(0)+"%";
 }
-function render(){
- draw();
- el("pos").textContent=world.robot.x.toFixed(1)+", "+world.robot.y.toFixed(1)+" cm";
- el("heading").textContent=world.robot.heading.toFixed(0)+"°";
- el("front").textContent=world.frontDistance.toFixed(0)+" cm";
- el("battery").textContent=world.battery.toFixed(0)+"%";
- el("motorL").textContent=world.motorL+"%";
- el("motorR").textContent=world.motorR+"%";
-}
-function tick(){
- var r=world.robot;
- r.y-=0.7;
- if(r.y<20){r.y=60;r.x+=35;}
- world.path.push({x:r.x,y:r.y});
- if(world.path.length>100)world.path.shift();
- world.frontDistance=Math.max(20,Math.min(250,120+(60-r.y)));
- render();
-}
-render();
-setInterval(tick,500);
-})();
+window.addEventListener("robot-state",e=>{w=e.detail;draw()});
+window.addEventListener("robot-command",e=>{log("COMMAND "+e.detail.command+" "+(e.detail.value||""));$("trace").textContent="Latest command: "+e.detail.command});
+window.addEventListener("robot-error",e=>{ $("status").textContent="FIRESTORE ERROR";$("status").className="bad";log("ERROR "+(e.detail?.message||e.detail))});
+$("status").textContent="● FIRESTORE LIVE";$("status").className="live";log("Firebase connected · VESP32-01 online");draw();
 </script>
-</body>
-</html>
+</body></html>
