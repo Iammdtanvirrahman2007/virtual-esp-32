@@ -98,7 +98,7 @@ void discoveryLoop(){
         while(!request.empty() && (request.back()=='\r'||request.back()=='\n'||request.back()==' ')) request.pop_back();
 
         if(request=="ROBOT_DISCOVER"){
-            std::string json=R"({"ip":"127.0.0.1","port":5000,"name":"Virtual ESP32 Robot","type":"wheeled"})";
+            std::string json=R"({"type":"robot","protocol":1,"id":"VESP32-01","name":"Virtual ESP32 Rover","robot_type":"wheeled","tcp_port":5000,"firmware":"virtual-esp32","version":"3.0"})";
             sendto(fd,json.c_str(),json.size(),0,(sockaddr*)&from,fromLen);
             char ip[INET_ADDRSTRLEN]{};
             inet_ntop(AF_INET,&from.sin_addr,ip,sizeof(ip));
