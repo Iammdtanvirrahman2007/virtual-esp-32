@@ -59,6 +59,7 @@ void handleClient(int fd,sockaddr_in addr){
             if(line=="PING") sendLine(fd,"PONG");
             else if(line=="GET_HARDWARE") sendLine(fd,hardware());
             else if(line=="GET_TELEMETRY") sendLine(fd,telemetry());
+            else if(line=="GET_WORLD") sendLine(fd,R"({"width":600,"height":400,"cell":20,"robot":{"x":60,"y":60,"heading":0},"obstacles":[{"x":180,"y":40,"w":40,"h":160},{"x":320,"y":200,"w":180,"h":40},{"x":100,"y":280,"w":160,"h":40},{"x":430,"y":60,"w":40,"h":100}],"path":[]}");
             else if(line.rfind("COMMAND ",0)==0) sendLine(fd,executeCommand(line.substr(8)));
             else sendLine(fd,"ERR UNKNOWN_REQUEST");
         }
