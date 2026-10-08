@@ -1,17 +1,119 @@
-<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Virtual ESP32 Rover Lab</title><style>
-body{margin:0;background:#0b1020;color:#e8eefc;font:14px system-ui}header{padding:15px 20px;background:#111a30;border-bottom:1px solid #293552;display:flex;justify-content:space-between}.grid{display:grid;grid-template-columns:1.3fr .9fr;gap:14px;padding:14px}.card{background:#111a30;border:1px solid #293552;border-radius:12px;overflow:hidden}.head{padding:11px 14px;border-bottom:1px solid #293552;font-weight:700}.body{padding:12px}.small{color:#8fa1c5;font-size:12px}canvas{width:100%;height:460px;background:#07101c}.cols{display:grid;grid-template-columns:1fr 1fr;gap:12px}.kv{display:grid;grid-template-columns:1fr auto;gap:7px;font-size:13px}.pill{padding:4px 9px;border-radius:99px;background:#263653}.ok{color:#63e39a}.warn{color:#ffd166}.code,.log{background:#080d18;padding:10px;overflow:auto;font:12px ui-monospace,monospace}.code{height:240px}.log{height:150px}.trace{background:#17233b;border-radius:8px;padding:9px;font:12px ui-monospace,monospace}svg{width:100%;height:210px;background:#080f1b}@media(max-width:900px){.grid{grid-template-columns:1fr}}</style></head><body>
-<header><b>🤖 Virtual ESP32 Rover Lab</b><span id="status" class="pill">OFFLINE</span></header>
-<div class="grid"><section class="card"><div class="head">LIVE WORLD MAP <span class="small">600×400 cm · 20 cm grid</span></div><canvas id="map" width="900" height="600"></canvas><div class="body cols"><div class="kv"><span>Position</span><b id="pos">--</b><span>Heading</span><b id="heading">--</b><span>Front sensor</span><b id="front">--</b></div><div class="kv"><span>Motor L</span><b id="ml">--</b><span>Motor R</span><b id="mr">--</b><span>Battery</span><b id="bat">--</b></div></div></section>
-<section class="card"><div class="head">CLAUDE-ROBOT → VIRTUAL ESP32</div><div class="body"><div id="trace" class="trace">Waiting for telemetry…</div><h4>Firmware / execution model</h4><div class="code" id="code"></div><h4>Virtual circuit</h4><svg viewBox="0 0 700 210"><rect x="20" y="55" width="170" height="100" rx="12" fill="none" stroke="#6e82aa"/><text x="105" y="82" text-anchor="middle" fill="#e8eefc">ESP32</text><text x="105" y="108" text-anchor="middle" fill="#93a3c7">TCP / UDP</text><text x="105" y="134" text-anchor="middle" fill="#93a3c7">Firmware</text><rect x="265" y="40" width="170" height="130" rx="12" fill="none" stroke="#6e82aa"/><text x="350" y="68" text-anchor="middle" fill="#e8eefc">Motor Driver</text><text x="350" y="96" text-anchor="middle" fill="#93a3c7">PWM L / R</text><text x="350" y="122" text-anchor="middle" fill="#93a3c7">DIR L / R</text><text x="350" y="148" text-anchor="middle" fill="#93a3c7">Differential drive</text><rect x="510" y="55" width="170" height="100" rx="12" fill="none" stroke="#6e82aa"/><text x="595" y="82" text-anchor="middle" fill="#e8eefc">Ultrasonic</text><text x="595" y="108" text-anchor="middle" fill="#93a3c7">TRIG / ECHO</text><text x="595" y="134" text-anchor="middle" fill="#93a3c7">front_distance</text><path d="M190 105H265M435 105H510" stroke="#63e39a" stroke-width="3"/></svg><h4>Execution log</h4><div id="log" class="log"></div></div></section></div>
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Virtual ESP32 Rover Lab</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#0b1020;color:#e8eefc;font:14px Arial,sans-serif}
+header{padding:16px 20px;background:#111a30;border-bottom:1px solid #293552;display:flex;justify-content:space-between}
+main{display:grid;grid-template-columns:1.35fr .9fr;gap:14px;padding:14px}.card{background:#111a30;border:1px solid #293552;border-radius:10px;overflow:hidden}
+h2{font-size:15px;margin:0;padding:12px 14px;border-bottom:1px solid #293552}.body{padding:12px}
+canvas{display:block;width:100%;height:auto;background:#07101c}.stats{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}.stat{padding:9px;background:#080d18;border-radius:7px}.label{color:#8fa1c5;font-size:11px}.value{font-weight:bold;margin-top:3px}
+#status{padding:5px 9px;border-radius:20px;background:#263653}.preview{color:#ffd166}.live{color:#63e39a}
+pre{margin:0;background:#080d18;padding:12px;overflow:auto;min-height:180px;font:12px monospace}
+#log{height:120px;overflow:auto;background:#080d18;padding:10px;font:11px monospace}
+@media(max-width:850px){main{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<header><b>🤖 Virtual ESP32 Rover Lab</b><span id="status" class="preview">PREVIEW</span></header>
+<main>
+<section class="card">
+<h2>LIVE WORLD MAP · 600 × 400 cm</h2>
+<div class="body">
+<canvas id="map" width="900" height="600"></canvas>
+<div class="stats">
+<div class="stat"><div class="label">POSITION</div><div id="pos" class="value">60, 60 cm</div></div>
+<div class="stat"><div class="label">HEADING</div><div id="heading" class="value">0°</div></div>
+<div class="stat"><div class="label">ULTRASONIC</div><div id="front" class="value">120 cm</div></div>
+<div class="stat"><div class="label">BATTERY</div><div id="battery" class="value">100%</div></div>
+<div class="stat"><div class="label">MOTOR L</div><div id="motorL" class="value">0%</div></div>
+<div class="stat"><div class="label">MOTOR R</div><div id="motorR" class="value">0%</div></div>
+</div>
+</div>
+</section>
+<section class="card">
+<h2>CLAUDE-ROBOT → VIRTUAL ESP32</h2>
+<div class="body">
+<p id="trace">Static GitHub Pages preview is running.</p>
+<h3>Execution model</h3>
+<pre>Claude-Robot
+     ↓
+COMMAND FORWARD 40
+     ↓
+Virtual ESP32
+     ↓
+Motor Driver
+  L=40% R=40%
+     ↓
+Virtual physics
+     ↓
+Ultrasonic sensor
+     ↓
+Telemetry → World Model</pre>
+<h3>Execution log</h3>
+<div id="log">GitHub Pages loaded successfully.\nWaiting for live bridge...</div>
+</div>
+</section>
+</main>
 <script>
-var P=new URLSearchParams(location.search),BRIDGE=P.get('bridge')||'http://127.0.0.1:8000',ID=P.get('id')||'VESP32-01',E=function(x){return document.getElementById(x)},C=E('map').getContext('2d');
-var DEMO={width:600,height:400,cell:20,robot:{x:60,y:60,heading:0},frontDistance:120,motorL:0,motorR:0,battery:100,collision:false,obstacles:[{id:'wall-1',x:180,y:40,w:40,h:160},{id:'wall-2',x:320,y:200,w:180,h:40},{id:'wall-3',x:100,y:280,w:160,h:40},{id:'wall-4',x:430,y:60,w:40,h:100}],path:[]};
-var live=false;
-E('code').textContent='# Claude-Robot -> bridge -> TCP -> virtual firmware\\n\\nCOMMAND FORWARD 40\\nCOMMAND TURN_LEFT 90\\nCOMMAND STOP 0\\n\\n# Firmware maps commands to motor_l / motor_r.\\n# Physics updates pose, sensor and collision state.';
-function draw(w){var W=900,H=600,s=Math.min(W/w.width,H/w.height),ox=(W-w.width*s)/2,oy=(H-w.height*s)/2;C.clearRect(0,0,W,H);C.save();C.translate(ox,oy);C.scale(s,s);C.strokeStyle='#263a5f';C.lineWidth=1;for(var x=0;x<=w.width;x+=w.cell){C.beginPath();C.moveTo(x,0);C.lineTo(x,w.height);C.stroke()}for(var y=0;y<=w.height;y+=w.cell){C.beginPath();C.moveTo(0,y);C.lineTo(w.width,y);C.stroke()}C.strokeStyle='#52688f';C.lineWidth=4;C.strokeRect(0,0,w.width,w.height);C.fillStyle='#52617f';(w.obstacles||[]).forEach(function(o){C.fillRect(o.x,o.y,o.w,o.h)});var r=w.robot||{x:0,y:0,heading:0};C.save();C.translate(r.x,r.y);C.rotate((r.heading||0)*Math.PI/180);C.fillStyle='#63d9ff';C.beginPath();C.moveTo(14,0);C.lineTo(-10,-8);C.lineTo(-10,8);C.closePath();C.fill();C.restore();if((w.path||[]).length){C.strokeStyle='#63e39a';C.lineWidth=2;C.beginPath();w.path.forEach(function(p,i){i?C.lineTo(p.x,p.y):C.moveTo(p.x,p.y)});C.stroke()}C.restore()}
-function render(w,mode){draw(w);E('pos').textContent=(w.robot.x||0).toFixed(1)+', '+(w.robot.y||0).toFixed(1)+' cm';E('heading').textContent=(w.robot.heading||0).toFixed(0)+'°';E('front').textContent=(w.frontDistance==null?'--':w.frontDistance+' cm');E('ml').textContent=(w.motorL==null?'--':w.motorL+'%');E('mr').textContent=(w.motorR==null?'--':w.motorR+'%');E('bat').textContent=(w.battery==null?'--':w.battery+'%');E('status').textContent=mode;E('status').className='pill '+(mode==='LIVE'?'ok':'warn')}
-async function poll(){try{var r=await fetch(BRIDGE+'/api/robot/world?id='+encodeURIComponent(ID));if(!r.ok)throw new Error('not connected');var w=await r.json();if(w){live=true;render(w,'LIVE')}}catch(e){if(!live){render(DEMO,'PREVIEW');E('trace').textContent='Preview world. Start Virtual ESP32 + Claude-Robot bridge to switch this map to LIVE telemetry.'}}}
-function demoTick(){if(live)return;var r=DEMO.robot,step=0.8;r.x+=Math.sin(r.heading*Math.PI/180)*step;r.y-=Math.cos(r.heading*Math.PI/180)*step;DEMO.path.push({x:r.x,y:r.y});if(DEMO.path.length>120)DEMO.path.shift();DEMO.frontDistance=Math.max(20,250-r.x*0.25);render(DEMO,'PREVIEW')}
-setInterval(poll,500);setInterval(demoTick,500);poll();
-try{var es=new EventSource(BRIDGE+'/api/robot/events?id='+encodeURIComponent(ID));es.onmessage=function(e){var m=JSON.parse(e.data),l=document.createElement('div');if(m.kind==='telemetry'){var s=m.state||{};E('trace').textContent='ESP32 telemetry ← '+(s.currentCommand||'IDLE')+' | '+JSON.stringify(s.sensors||{});l.textContent=new Date().toLocaleTimeString()+' telemetry '+JSON.stringify(s)}else if(m.kind==='log'){l.textContent=m.line&&m.line.text||''}else{return}E('log').prepend(l)}}catch(e){}
-</script></body></html>
+(function(){
+"use strict";
+var canvas=document.getElementById("map");
+var ctx=canvas.getContext("2d");
+var world={
+ width:600,height:400,cell:20,
+ robot:{x:60,y:60,heading:0},
+ frontDistance:120,motorL:0,motorR:0,battery:100,
+ obstacles:[
+  {x:180,y:40,w:40,h:160},
+  {x:320,y:200,w:180,h:40},
+  {x:100,y:280,w:160,h:40},
+  {x:430,y:60,w:40,h:100}
+ ],
+ path:[]
+};
+function el(id){return document.getElementById(id);}
+function draw(){
+ var sx=canvas.width/world.width,sy=canvas.height/world.height;
+ ctx.clearRect(0,0,canvas.width,canvas.height);
+ ctx.strokeStyle="#263a5f";ctx.lineWidth=1;
+ for(var x=0;x<=world.width;x+=world.cell){ctx.beginPath();ctx.moveTo(x*sx,0);ctx.lineTo(x*sx,canvas.height);ctx.stroke();}
+ for(var y=0;y<=world.height;y+=world.cell){ctx.beginPath();ctx.moveTo(0,y*sy);ctx.lineTo(canvas.width,y*sy);ctx.stroke();}
+ ctx.strokeStyle="#52688f";ctx.lineWidth=4;ctx.strokeRect(2,2,canvas.width-4,canvas.height-4);
+ ctx.fillStyle="#52617f";
+ world.obstacles.forEach(function(o){ctx.fillRect(o.x*sx,o.y*sy,o.w*sx,o.h*sy);});
+ if(world.path.length>1){
+  ctx.strokeStyle="#63e39a";ctx.lineWidth=3;ctx.beginPath();
+  world.path.forEach(function(p,i){if(i)ctx.lineTo(p.x*sx,p.y*sy);else ctx.moveTo(p.x*sx,p.y*sy);});
+  ctx.stroke();
+ }
+ var r=world.robot;
+ ctx.save();ctx.translate(r.x*sx,r.y*sy);ctx.rotate(r.heading*Math.PI/180);
+ ctx.fillStyle="#63d9ff";ctx.beginPath();ctx.moveTo(16,0);ctx.lineTo(-11,-9);ctx.lineTo(-11,9);ctx.closePath();ctx.fill();ctx.restore();
+}
+function render(){
+ draw();
+ el("pos").textContent=world.robot.x.toFixed(1)+", "+world.robot.y.toFixed(1)+" cm";
+ el("heading").textContent=world.robot.heading.toFixed(0)+"°";
+ el("front").textContent=world.frontDistance.toFixed(0)+" cm";
+ el("battery").textContent=world.battery.toFixed(0)+"%";
+ el("motorL").textContent=world.motorL+"%";
+ el("motorR").textContent=world.motorR+"%";
+}
+function tick(){
+ var r=world.robot;
+ r.y-=0.7;
+ if(r.y<20){r.y=60;r.x+=35;}
+ world.path.push({x:r.x,y:r.y});
+ if(world.path.length>100)world.path.shift();
+ world.frontDistance=Math.max(20,Math.min(250,120+(60-r.y)));
+ render();
+}
+render();
+setInterval(tick,500);
+})();
+</script>
+</body>
+</html>
