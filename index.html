@@ -81,13 +81,9 @@ function draw(){
  $("speedSlider").value=Number(w.speedLimit??100);$("speedValue").textContent=Number(w.speedLimit??100).toFixed(0)+"%";
 }
 window.addEventListener("robot-state",e=>{w=e.detail;draw()});
-window.addEventListener("esp-serial",e=>{const el=$("serial");el.textContent=(new Date().toLocaleTimeString()+"  "+e.detail+"\n"+el.textContent).slice(0,6000)});
 window.addEventListener("robot-speed",e=>{const v=Number(e.detail)||0;$("speedSlider").value=v;$("speedValue").textContent=v+"%";});
 $("speedSlider").oninput=e=>setSpeed(e.target.value);
 document.querySelectorAll("[data-speed]").forEach(b=>b.onclick=()=>setSpeed(b.dataset.speed));
-$("runCode").onclick=()=>window.VirtualESP32?.runSketch?.($("code").value);
-$("stopCode").onclick=()=>window.VirtualESP32?.stopSketch?.();
-$("clearCode").onclick=()=>{$("code").value="";$("codeStatus").textContent="Editor cleared."};
 window.addEventListener("robot-command",e=>{log("COMMAND "+e.detail.command+" "+(e.detail.value||""));$("trace").textContent="Latest command: "+e.detail.command});
 window.addEventListener("robot-error",e=>{$("status").textContent="FIRESTORE ERROR";$("status").className="bad";log("ERROR "+(e.detail?.message||e.detail))});
 function manual(cmd,val){ window.VirtualESP32?.sendManualCommand?.(cmd,val) }
@@ -95,6 +91,8 @@ $("manualForward").onclick=()=>manual("FORWARD",50);$("manualLeft").onclick=()=>
 document.querySelectorAll("[data-cmd]").forEach(b=>b.onclick=()=>manual(b.dataset.cmd,b.dataset.val));
 window.addEventListener("robot-ack",e=>{$("ack").textContent=JSON.stringify(e.detail,null,2)});
 window.addEventListener("robot-state",e=>{$("telemetry").textContent=JSON.stringify({pose:e.detail.robot,sensors:{frontDistance:e.detail.frontDistance,collision:e.detail.collision,battery:e.detail.battery},motors:{left:e.detail.motorL,right:e.detail.motorR}},null,2)});
-$("status").textContent="● FIRESTORE LIVE";$("status").className="live";log("Firebase connected · VESP32-01 online");draw();
+window.addEventListener("robot-safety",e=>{log("SAFETY "+e.detail);$("trace").textContent="Safety watchdog: "+e.detail});
+window.addEventListener("robot-error",e=>{log("ERROR "+(e.detail?.message||e.detail));$("status").textContent="FIRESTORE ERROR";$("status").className="bad"});
+$("status").textContent="● FIRESTORE LIVE";$("status").className="live";log("Firebase runtime started · VESP32-01 online");draw();
 </script>
 </body></html>
