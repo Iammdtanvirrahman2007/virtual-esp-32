@@ -17,7 +17,7 @@ static int frontDistance=75, motorL=0, motorR=0, battery=100;
 static float temperature=29.0f;
 
 std::string hardware() {
-    return R"({"ok":true,"type":"wheeled","name":"Virtual ESP32 Robot","camera":false,"sensors":[{"id":"front_distance","type":"ultrasonic","unit":"cm"}],"actuators":[{"id":"motor_l","type":"motor","unit":"percent"},{"id":"motor_r","type":"motor","unit":"percent"}],"panels":["DRIVETRAIN"]})";
+    return R"({"ok":true,"type":"wheeled","name":"Virtual ESP32 Robot","camera":false,"sensors":[{"id":"front_distance","type":"ultrasonic","unit":"cm"}],"actuators":[{"id":"motor_l","type":"motor","unit":"percent"},{"id":"motor_r","type":"motor","unit":"percent"}],"panels":["DRIVETRAIN","VIRTUAL_MAP"],"map":{"width":600,"height":400,"cell":20}})";
 }
 std::string telemetry() {
     std::lock_guard<std::mutex> lock(stateMutex);
