@@ -52,14 +52,14 @@ function executeSketchLine(line){
   if(m){virtualPins.set(Number(m[1]),Number(m[2]));const p=Number(m[1]),v=clamp(Number(m[2]),0,255);if(p===25)world.motorL=v/255*100;if(p===27)world.motorR=v/255*100;return}
   m=s.match(/digitalWrite\(\s*(\d+)\s*,\s*(HIGH|LOW)\s*\)/i);
   if(m){virtualPins.set(Number(m[1]),m[2].toUpperCase()==="HIGH"?1:0);const p=Number(m[1]);if(p===26&&world.motorL!==0)world.motorL=Math.abs(world.motorL)*(m[2].toUpperCase()==="HIGH"?1:-1);if(p===14&&world.motorR!==0)world.motorR=Math.abs(world.motorR)*(m[2].toUpperCase()==="HIGH"?1:-1);return}
-  m=s.match(/delay\(\s*(\d+)\s*\)/);if(m){sketchIndex++;sketchTimer=setTimeout(runSketchStep,Math.min(Number(m[1]),2000));return}
+  m=s.match(/delay\(\s*(\d+)\s*\)/);if(m){sketchTimer=setTimeout(runSketchStep,Math.min(Number(m[1]),2000));return}
 }
 function runSketchStep(){if(!sketchRunning)return;if(sketchIndex>=sketchLines.length)sketchIndex=0;const line=sketchLines[sketchIndex++];sketchTimer=null;executeSketchLine(line);if(sketchRunning&&!sketchTimer)sketchTimer=setTimeout(runSketchStep,20)}
 function runSketch(code){
   stopSketch();
   const cleaned=String(code||"");
   if(!/void\s+setup\s*\(/.test(cleaned)||!/void\s+loop\s*\(/.test(cleaned)){window.dispatchEvent(new CustomEvent("robot-error",{detail:{message:"ESP32 code must contain setup() and loop()"}}));return}
-  const loop=cleaned.match(/void\s+loop\s*\(\s*\)\s*\{([\s\\S]*?)\\}/);if(!loop)return;
+  const loop=cleaned.match(/void\s+loop\s*\(\s*\)\s*\{([\s\S]*?)\}/);if(!loop)return;
   sketchLines=loop[1].split(/\r?\n/);sketchIndex=0;sketchRunning=true;window.dispatchEvent(new CustomEvent("esp-serial",{detail:"--- ESP32 sketch started ---"}));runSketchStep();
 }
 function stopSketch(){sketchRunning=false;if(sketchTimer){clearTimeout(sketchTimer);sketchTimer=null}world.motorL=0;world.motorR=0;currentCommand="STOP";window.dispatchEvent(new CustomEvent("esp-serial",{detail:"--- ESP32 sketch stopped ---"}))}
