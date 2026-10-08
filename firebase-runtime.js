@@ -38,6 +38,7 @@ let running = false;
 let commandUnsub = null;
 let lastCommandSeenAt = 0;
 const COMMAND_TTL_MS = 1800;
+const TELEMETRY_INTERVAL_MS = 5000;
 
 const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 const rad=d=>d*Math.PI/180;
@@ -63,9 +64,13 @@ function applySpeedLimit(value){
   window.dispatchEvent(new CustomEvent("robot-speed",{detail:world.speedLimit}));
 }
 
-function safetyWatchdog(now){
-  if(currentCommand!=="STOP" && lastCommandSeenAt && now-lastCommandSeenAt>COMMAND_TTL_MS){
-    world.motorL=0; world.motorR=0; currentCommand="STOP";
+function safetyWatchdog(nowMs){
+  if(currentCommand!=="STOP" && lastCommandSeenAt && nowMs-lastCommandSeenAt>COMMAND_TTL_MS){
+    world.motorL=0;
+    world.motorR=0;
+    currentCommand="STOP";
+    currentCommandId="";
+    lastCommandSeenAt=0;
     window.dispatchEvent(new CustomEvent("robot-safety",{detail:"command timeout: motors stopped"}));
   }
 }
@@ -115,25 +120,36 @@ function physicsTick(dt){
   const nx=world.robot.x+Math.cos(a)*distance,ny=world.robot.y+Math.sin(a)*distance;
   world.collision=hits(nx,ny);
   if(!world.collision){world.robot.x=nx;world.robot.y=ny}
-  else{world.motorL=0;world.motorR=0;currentCommand="STOP"}
+  else{
+    world.motorL=0;
+    world.motorR=0;
+    currentCommand="STOP";
+    currentCommandId="";
+    lastCommandSeenAt=0;
+  }
   if(Math.abs(l)+Math.abs(r)>1)world.battery=clamp(world.battery-0.002*dt,0,100);
   world.frontDistance=rayDistance();
   world.path.push({x:world.robot.x,y:world.robot.y});
   if(world.path.length>300)world.path.shift();
 }
 
-async function publish(){
-  const state={
-    connected:true,firmware:"virtual-esp32",version:"cloud-1.1",
+function buildState(){
+  return {
+    connected:true,firmware:"virtual-esp32",version:"cloud-1.2",
     currentCommand,speed:Math.round((Math.abs(world.motorL)+Math.abs(world.motorR))/2),
     speedLimit:world.speedLimit,battery:world.battery,
     sensors:{front_distance:world.frontDistance,collision:world.collision,battery:world.battery},
     actuators:{motor_l:world.motorL,motor_r:world.motorR},
     pose:{...world.robot},
     world:{...world,robot:{...world.robot},path:world.path.slice(-300)},
-    heartbeat:Date.now(),commandId:currentCommandId,commandAgeMs:lastCommandSeenAt?Date.now()-lastCommandSeenAt:null,updatedAt:serverTimestamp()
+    heartbeat:Date.now(),commandId:currentCommandId,
+    commandAgeMs:lastCommandSeenAt?Date.now()-lastCommandSeenAt:null,
+    updatedAt:serverTimestamp()
   };
-  await setDoc(doc(db,"robots",robotId,"state","current"),state,{merge:true});
+}
+
+async function publish(){
+  await setDoc(doc(db,"robots",robotId,"state","current"),buildState(),{merge:true});
 }
 
 async function sendManualCommand(command, value=0){
@@ -144,7 +160,8 @@ async function sendManualCommand(command, value=0){
   });
   const seq=Math.max(lastSeq,Number(current?.seq||0))+1;
   const id="manual-"+Date.now()+"-"+seq;
-  const payload={seq,id,command:String(command).toUpperCase(),value:Number(value)||0,priority:String(command).toUpperCase()==="STOP"?1000:100,ttl:String(command).toUpperCase()==="STOP"?5000:1500,issuedAtMs:Date.now(),source:"virtual-esp32-manual"};
+  const normalized=String(command).toUpperCase();
+  const payload={seq,id,command:normalized,value:Number(value)||0,priority:normalized==="STOP"?1000:100,ttl:normalized==="STOP"?5000:1500,issuedAtMs:Date.now(),source:"virtual-esp32-manual"};
   await setDoc(doc(db,"robots",robotId,"control","current"),payload);
   logManual("TX "+payload.command+" "+payload.value);
 }
@@ -154,34 +171,40 @@ async function start(){
   if(running)return;
   running=true;
   await signInAnonymously(auth);
-  await setDoc(doc(db,"robots",robotId),{id:robotId,name:"Virtual ESP32 Rover",type:"wheeled",firmware:"virtual-esp32",online:true,updatedAt:serverTimestamp()},{merge:true});
+  await setDoc(doc(db,robotId),{id:robotId,name:"Virtual ESP32 Rover",type:"wheeled",firmware:"virtual-esp32",online:true,updatedAt:serverTimestamp()},{merge:true});
   commandUnsub=onSnapshot(doc(db,"robots",robotId,"control","current"),snap=>{
     if(!snap.exists())return;
     const c=snap.data();
     if(Number(c.seq||0)<=lastSeq)return;
     lastSeq=Number(c.seq||0);
-    const issuedAt = Number(c.issuedAtMs || 0);
-    const ttl = clamp(Number(c.ttl || COMMAND_TTL_MS), 250, 10000);
-    if (issuedAt && Date.now() - issuedAt > ttl) {
-      ackCommand(c, false, "COMMAND_EXPIRED");
+    const issuedAt=Number(c.issuedAtMs||0);
+    const ttl=clamp(Number(c.ttl||COMMAND_TTL_MS),250,10000);
+    if(issuedAt && Date.now()-issuedAt>ttl){
+      ackCommand(c,false,"COMMAND_EXPIRED");
       window.dispatchEvent(new CustomEvent("robot-error",{detail:{message:"Command expired"}}));
       return;
     }
-    if (String(c.command||"").toUpperCase()==="SET_SPEED") applySpeedLimit(c.value);
+    if(String(c.command||"").toUpperCase()==="SET_SPEED")applySpeedLimit(c.value);
     else applyCommand(c.command,c.value);
-    currentCommandId=String(c.id || "");
+    currentCommandId=String(c.id||"");
     currentCommandAt=Date.now();
     lastCommandSeenAt=currentCommandAt;
-    ackCommand(c,true); window.dispatchEvent(new CustomEvent("robot-ack",{detail:{id:String(c.id||""),seq:Number(c.seq||0),command:String(c.command||""),accepted:true,at:Date.now()}}));
+    ackCommand(c,true);
+    window.dispatchEvent(new CustomEvent("robot-ack",{detail:{id:String(c.id||""),seq:Number(c.seq||0),command:String(c.command||""),accepted:true,at:Date.now()}}));
     window.dispatchEvent(new CustomEvent("robot-command",{detail:c}));
   },err=>window.dispatchEvent(new CustomEvent("robot-error",{detail:err})));
 
   let last=performance.now(),lastPublishAt=0;
   const loop=async now=>{
-    const dt=Math.min((now-last)/1000,0.1);last=now;
+    const dt=Math.min((now-last)/1000,0.1);
+    last=now;
     physicsTick(dt);
-    safetyWatchdog(now);
-    if(now-lastPublishAt>500){lastPublishAt=now;try{await publish()}catch(e){window.dispatchEvent(new CustomEvent("robot-error",{detail:e}))}}
+    const nowMs=Date.now();
+    safetyWatchdog(nowMs);
+    if(now-lastPublishAt>TELEMETRY_INTERVAL_MS){
+      lastPublishAt=now;
+      try{await publish()}catch(e){window.dispatchEvent(new CustomEvent("robot-error",{detail:e}))}
+    }
     window.dispatchEvent(new CustomEvent("robot-state",{detail:structuredClone(world)}));
     requestAnimationFrame(loop);
   };
