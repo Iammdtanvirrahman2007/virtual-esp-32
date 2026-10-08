@@ -11,8 +11,9 @@ h2{font-size:15px;margin:0;padding:12px 14px;border-bottom:1px solid #293552}.bo
 canvas{display:block;width:100%;height:auto;background:#07101c}.stats{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}.stat{padding:9px;background:#080d18;border-radius:7px}.label{color:#8fa1c5;font-size:11px}.value{font-weight:bold;margin-top:3px}
 #status{padding:5px 9px;border-radius:20px;background:#263653}.live{color:#63e39a}.bad{color:#ff7b7b}
 pre,#log{margin:0;background:#080d18;padding:12px;overflow:auto;font:12px monospace}#log{height:130px}
+.speed-control{margin-top:12px;padding:12px;background:#080d18;border-radius:8px}.speed-row{display:flex;align-items:center;gap:10px}.speed-row input{flex:1}.speed-value{min-width:52px;text-align:right;font-weight:bold}.speed-buttons{display:flex;gap:7px;margin-top:8px;flex-wrap:wrap}.speed-buttons button{background:#1c2b4a;color:#e8eefc;border:1px solid #3a4d73;border-radius:7px;padding:6px 10px;cursor:pointer}
 @media(max-width:850px){main{grid-template-columns:1fr}}
-.code-card{grid-column:1/-1}.code-card textarea{width:100%;min-height:300px;resize:vertical;background:#050a12;color:#dce7ff;border:1px solid #293552;border-radius:8px;padding:12px;font:13px monospace;line-height:1.45}.toolbar{display:flex;gap:8px;margin-top:9px;flex-wrap:wrap}.toolbar button{background:#1c2b4a;color:#e8eefc;border:1px solid #3a4d73;border-radius:7px;padding:8px 12px;cursor:pointer}.toolbar button:hover{background:#263a5f}#codeStatus{margin-top:8px;color:#8fa1c5;font-size:12px}.code-card h3{font-size:13px;margin:12px 0 6px}</style>
+.code-card{grid-column:1/-1}.code-card textarea{width:100%;min-height:300px;resize:vertical;background:#050a12;color:#dce7ff;border:1px solid #293552;border-radius:8px;padding:12px;font:13px monospace;line-height:1.45}.toolbar{display:flex;gap:8px;margin-top:9px;flex-wrap:wrap}.toolbar button{background:#1c2b4a;color:#e8eefc;border:1px solid #3a4d73;border-radius:7px;padding:8px 12px;cursor:pointer}.toolbar button:hover,.speed-buttons button:hover{background:#263a5f}#codeStatus{margin-top:8px;color:#8fa1c5;font-size:12px}.code-card h3{font-size:13px;margin:12px 0 6px}</style>
 </head>
 <body>
 <header><b>🤖 Virtual ESP32 Rover Lab</b><span id="status">CONNECTING FIRESTORE…</span></header>
@@ -26,7 +27,15 @@ pre,#log{margin:0;background:#080d18;padding:12px;overflow:auto;font:12px monosp
 <div class="stat"><div class="label">BATTERY</div><div id="battery" class="value">100%</div></div>
 <div class="stat"><div class="label">MOTOR L</div><div id="motorL" class="value">0%</div></div>
 <div class="stat"><div class="label">MOTOR R</div><div id="motorR" class="value">0%</div></div>
-</div></div></section>
+<div class="stat"><div class="label">SPEED LIMIT</div><div id="speedLimit" class="value">100%</div></div>
+<div class="stat"><div class="label">CURRENT SPEED</div><div id="speed" class="value">0%</div></div>
+</div>
+<div class="speed-control">
+<div class="label">VIRTUAL CAR SPEED CONTROL</div>
+<div class="speed-row"><input id="speedSlider" type="range" min="0" max="100" step="1" value="100"><span id="speedValue" class="speed-value">100%</span></div>
+<div class="speed-buttons"><button data-speed="25">25%</button><button data-speed="50">50%</button><button data-speed="75">75%</button><button data-speed="100">100%</button><button data-speed="0">STOP</button></div>
+</div>
+</div></section>
 <section class="card code-card"><h2>💻 ESP32 CODE CONSOLE</h2><div class="body">
 <textarea id="code" spellcheck="false">#include <Arduino.h>
 
@@ -75,8 +84,9 @@ Claude-Robot World Model</pre>
 <script type="module">
 import "./firebase-runtime.js";
 const $=id=>document.getElementById(id),canvas=$("map"),ctx=canvas.getContext("2d");
-let w=window.VirtualESP32?.world||{width:600,height:400,cell:20,robot:{x:60,y:60,heading:0},frontDistance:250,battery:100,motorL:0,motorR:0,obstacles:[]};
+let w=window.VirtualESP32?.world||{width:600,height:400,cell:20,robot:{x:60,y:60,heading:0},frontDistance:250,battery:100,motorL:0,motorR:0,speedLimit:100,obstacles:[]};
 const log=t=>{$("log").textContent=(new Date().toLocaleTimeString()+"  "+t+"\n"+$("log").textContent).slice(0,5000)};
+function setSpeed(value){const v=Math.max(0,Math.min(100,Number(value)||0));$("speedSlider").value=v;$("speedValue").textContent=v+"%";window.VirtualESP32?.setSpeedLimit?.(v);log("SPEED LIMIT "+v+"%");}
 function draw(){
  const sx=canvas.width/w.width,sy=canvas.height/w.height;ctx.clearRect(0,0,canvas.width,canvas.height);
  ctx.strokeStyle="#263a5f";ctx.lineWidth=1;
@@ -86,16 +96,21 @@ function draw(){
  if((w.path||[]).length>1){ctx.strokeStyle="#63e39a";ctx.lineWidth=3;ctx.beginPath();w.path.forEach((p,i)=>i?ctx.lineTo(p.x*sx,p.y*sy):ctx.moveTo(p.x*sx,p.y*sy));ctx.stroke()}
  const r=w.robot;ctx.save();ctx.translate(r.x*sx,r.y*sy);ctx.rotate(r.heading*Math.PI/180);ctx.fillStyle="#63d9ff";ctx.beginPath();ctx.moveTo(16,0);ctx.lineTo(-11,-9);ctx.lineTo(-11,9);ctx.closePath();ctx.fill();ctx.restore();
  $("pos").textContent=r.x.toFixed(1)+", "+r.y.toFixed(1)+" cm";$("heading").textContent=r.heading.toFixed(0)+"°";
- $("front").textContent=(w.frontDistance??250).toFixed(0)+" cm";$("battery").textContent=w.battery.toFixed(0)+"%";
- $("motorL").textContent=w.motorL.toFixed(0)+"%";$("motorR").textContent=w.motorR.toFixed(0)+"%";
+ $("front").textContent=Number(w.frontDistance??250).toFixed(0)+" cm";$("battery").textContent=Number(w.battery??100).toFixed(0)+"%";
+ $("motorL").textContent=Number(w.motorL??0).toFixed(0)+"%";$("motorR").textContent=Number(w.motorR??0).toFixed(0)+"%";
+ $("speedLimit").textContent=Number(w.speedLimit??100).toFixed(0)+"%";$("speed").textContent=Math.round((Math.abs(Number(w.motorL??0))+Math.abs(Number(w.motorR??0)))/2)+"%";
+ $("speedSlider").value=Number(w.speedLimit??100);$("speedValue").textContent=Number(w.speedLimit??100).toFixed(0)+"%";
 }
 window.addEventListener("robot-state",e=>{w=e.detail;draw()});
-window.addEventListener("esp-serial",e=>{const el=$("serial");el.textContent=(new Date().toLocaleTimeString()+"  "+e.detail+"\\n"+el.textContent).slice(0,6000)});
+window.addEventListener("esp-serial",e=>{const el=$("serial");el.textContent=(new Date().toLocaleTimeString()+"  "+e.detail+"\n"+el.textContent).slice(0,6000)});
+window.addEventListener("robot-speed",e=>{const v=Number(e.detail)||0;$("speedSlider").value=v;$("speedValue").textContent=v+"%";});
+$("speedSlider").oninput=e=>setSpeed(e.target.value);
+document.querySelectorAll("[data-speed]").forEach(b=>b.onclick=()=>setSpeed(b.dataset.speed));
 $("runCode").onclick=()=>window.VirtualESP32?.runSketch?.($("code").value);
 $("stopCode").onclick=()=>window.VirtualESP32?.stopSketch?.();
 $("clearCode").onclick=()=>{$("code").value="";$("codeStatus").textContent="Editor cleared."};
 window.addEventListener("robot-command",e=>{log("COMMAND "+e.detail.command+" "+(e.detail.value||""));$("trace").textContent="Latest command: "+e.detail.command});
-window.addEventListener("robot-error",e=>{ $("status").textContent="FIRESTORE ERROR";$("status").className="bad";log("ERROR "+(e.detail?.message||e.detail))});
+window.addEventListener("robot-error",e=>{$("status").textContent="FIRESTORE ERROR";$("status").className="bad";log("ERROR "+(e.detail?.message||e.detail))});
 $("status").textContent="● FIRESTORE LIVE";$("status").className="live";log("Firebase connected · VESP32-01 online");draw();
 </script>
 </body></html>
