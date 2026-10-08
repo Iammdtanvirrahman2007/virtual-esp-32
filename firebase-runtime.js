@@ -32,20 +32,29 @@ const world = {
 
 let lastSeq = 0;
 let currentCommand = "STOP";
+let currentCommandId = "";
+let currentCommandAt = 0;
 let running = false;
 let commandUnsub = null;
-let sketchRunning = false;
-let sketchTimer = null;
-let sketchLines = [];
-let sketchIndex = 0;
-const virtualPins = new Map();
+let lastCommandSeenAt = 0;
+const COMMAND_TTL_MS = 1800;
 
 const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 const rad=d=>d*Math.PI/180;
 const normalize=d=>((d%360)+360)%360;
 
-function serialPrint(value){window.dispatchEvent(new CustomEvent("esp-serial",{detail:String(value)}));}
-function codeValue(expr){const m=String(expr||"").match(/[-+]?\d+(?:\.\d+)?/);return m?Number(m[0]):0;}
+function ackCommand(c, accepted, reason = "") {
+  return setDoc(doc(db,"robots",robotId,"state","current"), {
+    commandAck: {
+      id: String(c?.id || ""),
+      seq: Number(c?.seq || 0),
+      command: String(c?.command || ""),
+      accepted,
+      reason,
+      at: Date.now()
+    }
+  }, {merge:true});
+}
 
 function applySpeedLimit(value){
   world.speedLimit=clamp(Number(value)||0,0,100);
@@ -54,60 +63,23 @@ function applySpeedLimit(value){
   window.dispatchEvent(new CustomEvent("robot-speed",{detail:world.speedLimit}));
 }
 
-function executeSketchLine(line){
-  const s=line.trim().replace(/;$/,"");
-  if(!s||s.startsWith("//")||s.startsWith("#"))return;
-  let m=s.match(/Serial\.(?:println|print)\((.*)\)$/);
-  if(m){serialPrint(m[1].replace(/^["']|["']$/g,""));return}
-  m=s.match(/analogWrite\(\s*(\d+)\s*,\s*(-?\d+)\s*\)/);
-  if(m){
-    virtualPins.set(Number(m[1]),Number(m[2]));
-    const p=Number(m[1]),v=clamp(Number(m[2]),0,255)*(world.speedLimit/100);
-    if(p===25)world.motorL=v/255*100;
-    if(p===27)world.motorR=v/255*100;
-    return;
-  }
-  m=s.match(/digitalWrite\(\s*(\d+)\s*,\s*(HIGH|LOW)\s*\)/i);
-  if(m){
-    virtualPins.set(Number(m[1]),m[2].toUpperCase()==="HIGH"?1:0);
-    const p=Number(m[1]);
-    if(p===26&&world.motorL!==0)world.motorL=Math.abs(world.motorL)*(m[2].toUpperCase()==="HIGH"?1:-1);
-    if(p===14&&world.motorR!==0)world.motorR=Math.abs(world.motorR)*(m[2].toUpperCase()==="HIGH"?1:-1);
-    return;
-  }
-  m=s.match(/delay\(\s*(\d+)\s*\)/);
-  if(m){sketchTimer=setTimeout(runSketchStep,Math.min(Number(m[1]),2000));return}
+function applyCommand(command,value){
+  const v=clamp(Number(value)||0,-100,100)*(world.speedLimit/100);
+  currentCommand=String(command||"STOP").toUpperCase();
+  if(currentCommand==="FORWARD"||currentCommand==="DRIVE_FORWARD"){world.motorL=v;world.motorR=v}
+  else if(currentCommand==="BACKWARD"||currentCommand==="DRIVE_BACKWARD"){world.motorL=-Math.abs(v);world.motorR=-Math.abs(v)}
+  else if(currentCommand==="TURN_LEFT"){world.motorL=-Math.abs(v);world.motorR=Math.abs(v)}
+  else if(currentCommand==="TURN_RIGHT"){world.motorL=Math.abs(v);world.motorR=-Math.abs(v)}
+  else if(currentCommand==="SET_MOTOR_L"){world.motorL=v}
+  else if(currentCommand==="SET_MOTOR_R"){world.motorR=v}
+  else {world.motorL=0;world.motorR=0}
 }
 
-function runSketchStep(){
-  if(!sketchRunning)return;
-  if(sketchIndex>=sketchLines.length)sketchIndex=0;
-  const line=sketchLines[sketchIndex++];
-  sketchTimer=null;
-  executeSketchLine(line);
-  if(sketchRunning&&!sketchTimer)sketchTimer=setTimeout(runSketchStep,20);
-}
-
-function runSketch(code){
-  stopSketch();
-  const cleaned=String(code||"");
-  if(!/void\s+setup\s*\(/.test(cleaned)||!/void\s+loop\s*\(/.test(cleaned)){
-    window.dispatchEvent(new CustomEvent("robot-error",{detail:{message:"ESP32 code must contain setup() and loop()"}}));return;
+function safetyWatchdog(now){
+  if(currentCommand!=="STOP" && lastCommandSeenAt && now-lastCommandSeenAt>COMMAND_TTL_MS){
+    world.motorL=0; world.motorR=0; currentCommand="STOP";
+    window.dispatchEvent(new CustomEvent("robot-safety",{detail:"command timeout: motors stopped"}));
   }
-  const loop=cleaned.match(/void\s+loop\s*\(\s*\)\s*\{([\s\S]*?)\}/);
-  if(!loop)return;
-  sketchLines=loop[1].split(/\r?\n/);
-  sketchIndex=0;
-  sketchRunning=true;
-  window.dispatchEvent(new CustomEvent("esp-serial",{detail:"--- ESP32 sketch started ---"}));
-  runSketchStep();
-}
-
-function stopSketch(){
-  sketchRunning=false;
-  if(sketchTimer){clearTimeout(sketchTimer);sketchTimer=null}
-  world.motorL=0;world.motorR=0;currentCommand="STOP";
-  window.dispatchEvent(new CustomEvent("esp-serial",{detail:"--- ESP32 sketch stopped ---"}));
 }
 
 function rayDistance(){
@@ -164,14 +136,14 @@ function physicsTick(dt){
 
 async function publish(){
   const state={
-    connected:true,firmware:"virtual-esp32",version:"cloud-1.0",
+    connected:true,firmware:"virtual-esp32",version:"cloud-1.1",
     currentCommand,speed:Math.round((Math.abs(world.motorL)+Math.abs(world.motorR))/2),
     speedLimit:world.speedLimit,battery:world.battery,
     sensors:{front_distance:world.frontDistance,collision:world.collision,battery:world.battery},
     actuators:{motor_l:world.motorL,motor_r:world.motorR},
     pose:{...world.robot},
     world:{...world,robot:{...world.robot},path:world.path.slice(-300)},
-    heartbeat:Date.now(),updatedAt:serverTimestamp()
+    heartbeat:Date.now(),commandId:currentCommandId,commandAgeMs:lastCommandSeenAt?Date.now()-lastCommandSeenAt:null,updatedAt:serverTimestamp()
   };
   await setDoc(doc(db,"robots",robotId,"state","current"),state,{merge:true});
 }
@@ -186,11 +158,19 @@ async function start(){
     const c=snap.data();
     if(Number(c.seq||0)<=lastSeq)return;
     lastSeq=Number(c.seq||0);
-    if(String(c.command||"").toUpperCase()==="SET_SPEED"){
-      applySpeedLimit(c.value);
-    }else{
-      applyCommand(c.command,c.value);
+    const issuedAt = Number(c.issuedAtMs || 0);
+    const ttl = clamp(Number(c.ttl || COMMAND_TTL_MS), 250, 10000);
+    if (issuedAt && Date.now() - issuedAt > ttl) {
+      ackCommand(c, false, "COMMAND_EXPIRED");
+      window.dispatchEvent(new CustomEvent("robot-error",{detail:{message:"Command expired"}}));
+      return;
     }
+    if (String(c.command||"").toUpperCase()==="SET_SPEED") applySpeedLimit(c.value);
+    else applyCommand(c.command,c.value);
+    currentCommandId=String(c.id || "");
+    currentCommandAt=Date.now();
+    lastCommandSeenAt=currentCommandAt;
+    ackCommand(c,true);
     window.dispatchEvent(new CustomEvent("robot-command",{detail:c}));
   },err=>window.dispatchEvent(new CustomEvent("robot-error",{detail:err})));
 
@@ -198,6 +178,7 @@ async function start(){
   const loop=async now=>{
     const dt=Math.min((now-last)/1000,0.1);last=now;
     physicsTick(dt);
+    safetyWatchdog(now);
     if(now-lastPublishAt>500){lastPublishAt=now;try{await publish()}catch(e){window.dispatchEvent(new CustomEvent("robot-error",{detail:e}))}}
     window.dispatchEvent(new CustomEvent("robot-state",{detail:structuredClone(world)}));
     requestAnimationFrame(loop);
@@ -205,5 +186,5 @@ async function start(){
   requestAnimationFrame(loop);
 }
 
-window.VirtualESP32={world,start,stop(){commandUnsub?.();running=false},publish,runSketch,stopSketch,setSpeedLimit:applySpeedLimit};
+window.VirtualESP32={world,start,stop(){commandUnsub?.();running=false;world.motorL=0;world.motorR=0},publish,setSpeedLimit:applySpeedLimit};
 start().catch(e=>window.dispatchEvent(new CustomEvent("robot-error",{detail:e})));
