@@ -54,7 +54,7 @@ function executeSketchLine(line){
   if(m){virtualPins.set(Number(m[1]),m[2].toUpperCase()==="HIGH"?1:0);const p=Number(m[1]);if(p===26&&world.motorL!==0)world.motorL=Math.abs(world.motorL)*(m[2].toUpperCase()==="HIGH"?1:-1);if(p===14&&world.motorR!==0)world.motorR=Math.abs(world.motorR)*(m[2].toUpperCase()==="HIGH"?1:-1);return}
   m=s.match(/delay\\(\\s*(\\d+)\\s*\\)/);if(m){sketchIndex++;sketchTimer=setTimeout(runSketchStep,Math.min(Number(m[1]),2000));return}
 }
-function runSketchStep(){if(!sketchRunning)return;if(sketchIndex>=sketchLines.length){sketchIndex=0}const line=sketchLines[sketchIndex++];executeSketchLine(line);if(sketchRunning&&!sketchTimer)sketchTimer=setTimeout(()=>{sketchTimer=null;runSketchStep()},20)}
+function runSketchStep(){if(!sketchRunning)return;if(sketchIndex>=sketchLines.length)sketchIndex=0;const line=sketchLines[sketchIndex++];sketchTimer=null;executeSketchLine(line);if(sketchRunning&&!sketchTimer)sketchTimer=setTimeout(runSketchStep,20)}
 function runSketch(code){
   stopSketch();
   const cleaned=String(code||"");
