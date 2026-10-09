@@ -13,3 +13,16 @@ Run: `./virtual-esp32`
 JSON protocol: `{"type":"hello"}` and `{"type":"command","cmd":"FORWARD","arg":70}`.
 
 Legacy requests remain supported: PING, GET_HARDWARE, GET_TELEMETRY, GET_WORLD, and COMMAND commands.
+
+## Firestore control contract
+
+The browser simulator uses the shared Firestore documents:
+
+- `robots/VESP32-01` advertises identity and the hardware description.
+- `robots/VESP32-01/control/current` carries sequenced, expiring commands.
+- `robots/VESP32-01/state/current` carries telemetry, pose, actuators, world data, hardware capabilities, and command acknowledgements.
+
+Supported cloud commands are `FORWARD`, `BACKWARD`, `TURN_LEFT`, `TURN_RIGHT`, `STOP`, and `SET_SPEED`. Unknown commands are rejected with an `UNSUPPORTED_COMMAND` acknowledgement/error; expired commands are not executed. The simulator stops the motors when its command watchdog expires.
+
+The matching Firestore rules validate the command schema and range. Anonymous browser sign-in is not a trusted identity boundary, so this cloud control path is intended for simulation. Do not connect physical hardware to these public client-write rules without adding server-side authorization and restricting device telemetry writes.
+
