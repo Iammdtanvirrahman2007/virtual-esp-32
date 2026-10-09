@@ -207,6 +207,7 @@ async function start(){
       firmware:"virtual-esp32",protocol:"1.1",
       hardware:hardwareDescription,online:true,updatedAt:serverTimestamp()
     },{merge:true});
+    window.dispatchEvent(new CustomEvent("robot-connected",{detail:{robotId,hardware:hardwareDescription}}));
     commandUnsub=onSnapshot(doc(db,"robots",robotId,"control","current"),snap=>{
       if(!snap.exists())return;
       const c=snap.data();
