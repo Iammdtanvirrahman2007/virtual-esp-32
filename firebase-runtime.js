@@ -40,6 +40,23 @@ let animationFrameId = null;
 let lastCommandSeenAt = 0;
 const COMMAND_TTL_MS = 1800;
 const TELEMETRY_INTERVAL_MS = 5000;
+const hardwareDescription = {
+  protocol: "1.1",
+  type: "wheeled",
+  firmware: "virtual-esp32",
+  version: "cloud-1.2",
+  sensors: [
+    { id: "front_distance", type: "ultrasonic", unit: "cm", min: 0, max: 250 },
+    { id: "collision", type: "digital", unit: "bool" },
+    { id: "battery", type: "battery", unit: "%" }
+  ],
+  actuators: [
+    { id: "motor_l", type: "motor", unit: "%" },
+    { id: "motor_r", type: "motor", unit: "%" }
+  ],
+  controls: ["FORWARD", "BACKWARD", "TURN_LEFT", "TURN_RIGHT", "STOP", "SET_SPEED"],
+  map: { width: 600, height: 400, cell: 20 }
+};
 
 const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 const rad=d=>d*Math.PI/180;
@@ -137,6 +154,7 @@ function physicsTick(dt){
 function buildState(){
   return {
     connected:true,firmware:"virtual-esp32",version:"cloud-1.2",
+    hardware:hardwareDescription,
     currentCommand,speed:Math.round((Math.abs(world.motorL)+Math.abs(world.motorR))/2),
     speedLimit:world.speedLimit,battery:world.battery,
     sensors:{front_distance:world.frontDistance,collision:world.collision,battery:world.battery},
@@ -179,7 +197,11 @@ async function start(){
   try {
     await signInAnonymously(auth);
     // Keep all robot records under the same collection path used by the controller and Firestore rules.
-    await setDoc(doc(db,"robots",robotId),{id:robotId,name:"Virtual ESP32 Rover",type:"wheeled",firmware:"virtual-esp32",online:true,updatedAt:serverTimestamp()},{merge:true});
+    await setDoc(doc(db,"robots",robotId),{
+      id:robotId,name:"Virtual ESP32 Rover",type:"wheeled",
+      firmware:"virtual-esp32",protocol:"1.1",
+      hardware:hardwareDescription,online:true,updatedAt:serverTimestamp()
+    },{merge:true});
     commandUnsub=onSnapshot(doc(db,"robots",robotId,"control","current"),snap=>{
       if(!snap.exists())return;
       const c=snap.data();
@@ -192,8 +214,14 @@ async function start(){
         window.dispatchEvent(new CustomEvent("robot-error",{detail:{message:"Command expired"}}));
         return;
       }
-      if(String(c.command||"").toUpperCase()==="SET_SPEED")applySpeedLimit(c.value);
-      else applyCommand(c.command,c.value);
+      const normalizedCommand=String(c.command||"").trim().toUpperCase();
+      if(!hardwareDescription.controls.includes(normalizedCommand)){
+        ackCommand(c,false,"UNSUPPORTED_COMMAND").catch(e=>window.dispatchEvent(new CustomEvent("robot-error",{detail:e})));
+        window.dispatchEvent(new CustomEvent("robot-error",{detail:{message:"Unsupported command: "+normalizedCommand}}));
+        return;
+      }
+      if(normalizedCommand==="SET_SPEED")applySpeedLimit(c.value);
+      else applyCommand(normalizedCommand,c.value);
       currentCommandId=String(c.id||"");
       currentCommandAt=Date.now();
       lastCommandSeenAt=currentCommandAt;
