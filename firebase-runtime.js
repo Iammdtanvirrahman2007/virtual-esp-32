@@ -184,8 +184,13 @@ async function sendManualCommand(command, value=0){
   });
   const seq=Math.max(lastSeq,Number(current?.seq||0))+1;
   const id="manual-"+Date.now()+"-"+seq;
-  const normalized=String(command).toUpperCase();
-  const payload={seq,id,command:normalized,value:Number(value)||0,priority:normalized==="STOP"?1000:100,ttl:normalized==="STOP"?5000:1500,issuedAtMs:Date.now(),source:"virtual-esp32-manual"};
+  const normalized=String(command||"STOP").trim().toUpperCase();
+  if(!hardwareDescription.controls.includes(normalized)){
+    throw new Error("Unsupported manual command: "+normalized);
+  }
+  const numeric=Number(value);
+  const safeValue=Number.isFinite(numeric)?clamp(numeric,-100,100):0;
+  const payload={seq,id,command:normalized,value:safeValue,priority:normalized==="STOP"?1000:100,ttl:normalized==="STOP"?5000:1500,issuedAtMs:Date.now(),source:"virtual-esp32-manual",protocol:"1.1"};
   await setDoc(doc(db,"robots",robotId,"control","current"),payload);
   logManual("TX "+payload.command+" "+payload.value);
 }
