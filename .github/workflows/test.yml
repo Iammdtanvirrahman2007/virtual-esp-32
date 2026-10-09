@@ -17,5 +17,7 @@ jobs:
       - uses: actions/checkout@v4
       - name: Install compiler
         run: sudo apt-get update && sudo apt-get install -y g++
+      - name: Check browser Firestore runtime syntax
+        run: node --input-type=module --check < firebase-runtime.js
       - name: Build and test TCP protocol
         run: bash test.sh
