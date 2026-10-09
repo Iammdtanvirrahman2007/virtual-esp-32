@@ -38,7 +38,7 @@ sock.settimeout(2)
 stream = sock.makefile("rwb", buffering=0)
 
 def request(line):
-    stream.write((line + "\\n").encode())
+    stream.write((line + "\n").encode())
     response = stream.readline()
     if not response:
         raise AssertionError(f"No response for {line}")
