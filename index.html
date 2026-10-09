@@ -42,6 +42,7 @@ pre,#log{margin:0;background:#080d18;padding:12px;overflow:auto;font:12px monosp
 <button id="manualForward">↑ FORWARD</button><button id="manualLeft">← LEFT</button><button id="manualStop">■ STOP</button><button id="manualRight">→ RIGHT</button><button id="manualBackward">↓ BACK</button>
 </div>
 <div class="toolbar"><button data-cmd="FORWARD" data-val="25">FWD 25</button><button data-cmd="FORWARD" data-val="50">FWD 50</button><button data-cmd="FORWARD" data-val="75">FWD 75</button><button data-cmd="TURN_LEFT" data-val="60">LEFT 60</button><button data-cmd="TURN_RIGHT" data-val="60">RIGHT 60</button><button data-cmd="STOP" data-val="0">STOP</button></div>
+<h3>Hardware discovery · GET_HARDWARE</h3><pre id="hardware">waiting for robot capabilities…</pre>
 <h3>Command ACK</h3><pre id="ack">waiting…</pre>
 <h3>Telemetry</h3><pre id="telemetry">waiting…</pre>
 </div></section><section class="card"><h2>☁ CLAUDE-ROBOT ↔ FIRESTORE ↔ VIRTUAL ESP32</h2><div class="body">
@@ -81,18 +82,19 @@ function draw(){
  $("speedSlider").value=Number(w.speedLimit??100);$("speedValue").textContent=Number(w.speedLimit??100).toFixed(0)+"%";
 }
 window.addEventListener("robot-state",e=>{w=e.detail;draw()});
+window.addEventListener("robot-connected",e=>{$("status").textContent="● FIRESTORE LIVE";$("status").className="live";$("hardware").textContent=JSON.stringify(e.detail.hardware,null,2);log("Firestore connected · hardware capabilities published")});
 window.addEventListener("robot-speed",e=>{const v=Number(e.detail)||0;$("speedSlider").value=v;$("speedValue").textContent=v+"%";});
 $("speedSlider").oninput=e=>setSpeed(e.target.value);
 document.querySelectorAll("[data-speed]").forEach(b=>b.onclick=()=>setSpeed(b.dataset.speed));
 window.addEventListener("robot-command",e=>{log("COMMAND "+e.detail.command+" "+(e.detail.value||""));$("trace").textContent="Latest command: "+e.detail.command});
 window.addEventListener("robot-error",e=>{$("status").textContent="FIRESTORE ERROR";$("status").className="bad";log("ERROR "+(e.detail?.message||e.detail))});
-function manual(cmd,val){ window.VirtualESP32?.sendManualCommand?.(cmd,val) }
+function manual(cmd,val){ Promise.resolve(window.VirtualESP32?.sendManualCommand?.(cmd,val)).catch(e=>window.dispatchEvent(new CustomEvent("robot-error",{detail:e}))) }
 $("manualForward").onclick=()=>manual("FORWARD",50);$("manualLeft").onclick=()=>manual("TURN_LEFT",60);$("manualStop").onclick=()=>manual("STOP",0);$("manualRight").onclick=()=>manual("TURN_RIGHT",60);$("manualBackward").onclick=()=>manual("BACKWARD",50);
 document.querySelectorAll("[data-cmd]").forEach(b=>b.onclick=()=>manual(b.dataset.cmd,b.dataset.val));
 window.addEventListener("robot-ack",e=>{$("ack").textContent=JSON.stringify(e.detail,null,2)});
 window.addEventListener("robot-state",e=>{$("telemetry").textContent=JSON.stringify({pose:e.detail.robot,sensors:{frontDistance:e.detail.frontDistance,collision:e.detail.collision,battery:e.detail.battery},motors:{left:e.detail.motorL,right:e.detail.motorR}},null,2)});
 window.addEventListener("robot-safety",e=>{log("SAFETY "+e.detail);$("trace").textContent="Safety watchdog: "+e.detail});
 window.addEventListener("robot-error",e=>{log("ERROR "+(e.detail?.message||e.detail));$("status").textContent="FIRESTORE ERROR";$("status").className="bad"});
-$("status").textContent="● FIRESTORE LIVE";$("status").className="live";log("Firebase runtime started · VESP32-01 online");draw();
+$("status").textContent="CONNECTING FIRESTORE…";$("status").className="";log("Firebase runtime initialized · waiting for authenticated Firestore connection");draw();
 </script>
 </body></html>
