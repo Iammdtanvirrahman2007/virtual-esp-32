@@ -8,7 +8,7 @@ const firebaseConfig = {
   projectId: "robocontrol-snmyl",
   storageBucket: "robocontrol-snmyl.firebasestorage.app",
   messagingSenderId: "753891876454",
-  appId: "1:753891876454:web:52f5911a74c6a4057a17a7"
+  appId: "1:753891876454:web:52f5911a74c6a4057a7"
 };
 
 const app = initializeApp(firebaseConfig);
@@ -36,6 +36,7 @@ let currentCommandId = "";
 let currentCommandAt = 0;
 let running = false;
 let commandUnsub = null;
+let animationFrameId = null;
 let lastCommandSeenAt = 0;
 const COMMAND_TTL_MS = 1800;
 const TELEMETRY_INTERVAL_MS = 5000;
@@ -154,9 +155,14 @@ async function publish(){
 
 async function sendManualCommand(command, value=0){
   await signInAnonymously(auth);
-  const current = await new Promise(resolve => {
-    let done=false;
-    const u=onSnapshot(doc(db,"robots",robotId,"control","current"),snap=>{if(!done){done=true;u();resolve(snap.exists()?snap.data():null)}});
+  const current = await new Promise((resolve, reject) => {
+    let done = false;
+    let unsubscribe = () => {};
+    unsubscribe = onSnapshot(doc(db,"robots",robotId,"control","current"),snap=>{
+      if(!done){done=true;unsubscribe();resolve(snap.exists()?snap.data():null)}
+    },error=>{
+      if(!done){done=true;unsubscribe();reject(error)}
+    });
   });
   const seq=Math.max(lastSeq,Number(current?.seq||0))+1;
   const id="manual-"+Date.now()+"-"+seq;
@@ -170,46 +176,67 @@ function logManual(message){ window.dispatchEvent(new CustomEvent("robot-command
 async function start(){
   if(running)return;
   running=true;
-  await signInAnonymously(auth);
-  await setDoc(doc(db,robotId),{id:robotId,name:"Virtual ESP32 Rover",type:"wheeled",firmware:"virtual-esp32",online:true,updatedAt:serverTimestamp()},{merge:true});
-  commandUnsub=onSnapshot(doc(db,"robots",robotId,"control","current"),snap=>{
-    if(!snap.exists())return;
-    const c=snap.data();
-    if(Number(c.seq||0)<=lastSeq)return;
-    lastSeq=Number(c.seq||0);
-    const issuedAt=Number(c.issuedAtMs||0);
-    const ttl=clamp(Number(c.ttl||COMMAND_TTL_MS),250,10000);
-    if(issuedAt && Date.now()-issuedAt>ttl){
-      ackCommand(c,false,"COMMAND_EXPIRED");
-      window.dispatchEvent(new CustomEvent("robot-error",{detail:{message:"Command expired"}}));
-      return;
-    }
-    if(String(c.command||"").toUpperCase()==="SET_SPEED")applySpeedLimit(c.value);
-    else applyCommand(c.command,c.value);
-    currentCommandId=String(c.id||"");
-    currentCommandAt=Date.now();
-    lastCommandSeenAt=currentCommandAt;
-    ackCommand(c,true);
-    window.dispatchEvent(new CustomEvent("robot-ack",{detail:{id:String(c.id||""),seq:Number(c.seq||0),command:String(c.command||""),accepted:true,at:Date.now()}}));
-    window.dispatchEvent(new CustomEvent("robot-command",{detail:c}));
-  },err=>window.dispatchEvent(new CustomEvent("robot-error",{detail:err})));
+  try {
+    await signInAnonymously(auth);
+    // Keep all robot records under the same collection path used by the controller and Firestore rules.
+    await setDoc(doc(db,"robots",robotId),{id:robotId,name:"Virtual ESP32 Rover",type:"wheeled",firmware:"virtual-esp32",online:true,updatedAt:serverTimestamp()},{merge:true});
+    commandUnsub=onSnapshot(doc(db,"robots",robotId,"control","current"),snap=>{
+      if(!snap.exists())return;
+      const c=snap.data();
+      if(Number(c.seq||0)<=lastSeq)return;
+      lastSeq=Number(c.seq||0);
+      const issuedAt=Number(c.issuedAtMs||0);
+      const ttl=clamp(Number(c.ttl||COMMAND_TTL_MS),250,10000);
+      if(issuedAt && Date.now()-issuedAt>ttl){
+        ackCommand(c,false,"COMMAND_EXPIRED").catch(e=>window.dispatchEvent(new CustomEvent("robot-error",{detail:e})));
+        window.dispatchEvent(new CustomEvent("robot-error",{detail:{message:"Command expired"}}));
+        return;
+      }
+      if(String(c.command||"").toUpperCase()==="SET_SPEED")applySpeedLimit(c.value);
+      else applyCommand(c.command,c.value);
+      currentCommandId=String(c.id||"");
+      currentCommandAt=Date.now();
+      lastCommandSeenAt=currentCommandAt;
+      ackCommand(c,true).catch(e=>window.dispatchEvent(new CustomEvent("robot-error",{detail:e})));
+      window.dispatchEvent(new CustomEvent("robot-ack",{detail:{id:String(c.id||""),seq:Number(c.seq||0),command:String(c.command||""),accepted:true,at:Date.now()}}));
+      window.dispatchEvent(new CustomEvent("robot-command",{detail:c}));
+    },err=>window.dispatchEvent(new CustomEvent("robot-error",{detail:err})));
 
-  let last=performance.now(),lastPublishAt=0;
-  const loop=async now=>{
-    const dt=Math.min((now-last)/1000,0.1);
-    last=now;
-    physicsTick(dt);
-    const nowMs=Date.now();
-    safetyWatchdog(nowMs);
-    if(now-lastPublishAt>TELEMETRY_INTERVAL_MS){
-      lastPublishAt=now;
-      try{await publish()}catch(e){window.dispatchEvent(new CustomEvent("robot-error",{detail:e}))}
-    }
-    window.dispatchEvent(new CustomEvent("robot-state",{detail:structuredClone(world)}));
-    requestAnimationFrame(loop);
-  };
-  requestAnimationFrame(loop);
+    let last=performance.now(),lastPublishAt=0;
+    const loop=async now=>{
+      if(!running)return;
+      const dt=Math.min((now-last)/1000,0.1);
+      last=now;
+      physicsTick(dt);
+      const nowMs=Date.now();
+      safetyWatchdog(nowMs);
+      if(now-lastPublishAt>TELEMETRY_INTERVAL_MS){
+        lastPublishAt=now;
+        try{await publish()}catch(e){window.dispatchEvent(new CustomEvent("robot-error",{detail:e}))}
+      }
+      window.dispatchEvent(new CustomEvent("robot-state",{detail:structuredClone(world)}));
+      if(running)animationFrameId=requestAnimationFrame(loop);
+    };
+    animationFrameId=requestAnimationFrame(loop);
+  } catch(e) {
+    running=false;
+    commandUnsub?.();
+    commandUnsub=null;
+    window.dispatchEvent(new CustomEvent("robot-error",{detail:e}));
+  }
 }
 
-window.VirtualESP32={world,start,stop(){commandUnsub?.();running=false;world.motorL=0;world.motorR=0},publish,setSpeedLimit:applySpeedLimit,sendManualCommand};
+window.VirtualESP32={world,start,stop(){
+  running=false;
+  if(animationFrameId!==null)cancelAnimationFrame(animationFrameId);
+  animationFrameId=null;
+  commandUnsub?.();
+  commandUnsub=null;
+  world.motorL=0;
+  world.motorR=0;
+  currentCommand="STOP";
+  currentCommandId="";
+  lastCommandSeenAt=0;
+  publish().catch(e=>window.dispatchEvent(new CustomEvent("robot-error",{detail:e})));
+},publish,setSpeedLimit:applySpeedLimit,sendManualCommand};
 start().catch(e=>window.dispatchEvent(new CustomEvent("robot-error",{detail:e})));
