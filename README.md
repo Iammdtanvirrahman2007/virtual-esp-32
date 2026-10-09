@@ -24,5 +24,5 @@ The browser simulator uses the shared Firestore documents:
 
 Supported cloud commands are `FORWARD`, `BACKWARD`, `TURN_LEFT`, `TURN_RIGHT`, `STOP`, and `SET_SPEED`. Unknown commands are rejected with an `UNSUPPORTED_COMMAND` acknowledgement/error; expired commands are not executed. The simulator stops the motors when its command watchdog expires.
 
-The matching Firestore rules validate the command schema and range. Anonymous browser sign-in is not a trusted identity boundary, so this cloud control path is intended for simulation. Do not connect physical hardware to these public client-write rules without adding server-side authorization and restricting device telemetry writes.
+The matching Firestore rules validate the command schema and range. The rules file lives in the `claude-robot` repository; pushing either GitHub Pages site does not deploy Firestore rules. Deploy and verify the rules in the Firebase project before relying on them. Anonymous browser sign-in is not a trusted identity boundary, so this cloud control path is intended for simulation. Do not connect physical hardware to these public client-write rules without adding server-side authorization and restricting device telemetry writes.
 
