@@ -84,10 +84,10 @@ std::string executeCommand(const std::string& cmd){
  std::lock_guard<std::mutex> lock(stateMutex);
  std::istringstream in(cmd);std::string op;int value=0;in>>op>>value;
  value=std::max(0,std::min(100,value));std::cout<<"[COMMAND] "<<cmd<<"\n";
- if(op=="DRIVE_FORWARD"||op=="WALK_FORWARD"||op=="FORWARD")motorL=value,motorR=value;
- else if(op=="DRIVE_BACKWARD"||op=="WALK_BACKWARD"||op=="BACKWARD")motorL=-value,motorR=-value;
- else if(op=="TURN_LEFT")motorL=-value,motorR=value;
- else if(op=="TURN_RIGHT")motorL=value,motorR=-value;
+ if(op=="DRIVE_FORWARD"||op=="WALK_FORWARD"||op=="FORWARD")motorL=std::abs(value),motorR=std::abs(value);
+ else if(op=="DRIVE_BACKWARD"||op=="WALK_BACKWARD"||op=="BACKWARD")motorL=-std::abs(value),motorR=-std::abs(value);
+ else if(op=="TURN_LEFT")motorL=-std::abs(value),motorR=std::abs(value);
+ else if(op=="TURN_RIGHT")motorL=std::abs(value),motorR=-std::abs(value);
  else if(op=="SET_MOTOR_L")motorL=value;
  else if(op=="SET_MOTOR_R")motorR=value;
  else if(op=="STOP"||op=="E_STOP"||op=="SIT"||op=="LAND")motorL=0,motorR=0;
